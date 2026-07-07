@@ -101,6 +101,66 @@ class GeneratorTest(unittest.TestCase):
         with self.assertRaises(InventoryError):
             validate_inventory(inventory)
 
+    def test_render_common_routing_and_switching_features(self):
+        inventory = {
+            "devices": [
+                {
+                    "hostname": "EDGE-SW1",
+                    "device_layer": "L3",
+                    "spanning_tree": {"mode": "rapid-pvst", "portfast_default": True},
+                    "acls": [
+                        {
+                            "name": "INSIDE-NAT",
+                            "type": "extended",
+                            "entries": [{"action": "permit", "protocol": "ip", "source": "10.10.10.0/24", "destination": "any"}],
+                        }
+                    ],
+                    "dhcp": {
+                        "excluded_addresses": [{"start": "10.10.10.1", "end": "10.10.10.20"}],
+                        "pools": [{"name": "USERS", "network": "10.10.10.0/24", "default_router": "10.10.10.1"}],
+                    },
+                    "interfaces": [
+                        {
+                            "name": "GigabitEthernet0/0",
+                            "mode": "routed",
+                            "address": "203.0.113.2/30",
+                            "nat_role": "outside",
+                        },
+                        {
+                            "name": "Vlan10",
+                            "mode": "svi",
+                            "address": "10.10.10.2/24",
+                            "nat_role": "inside",
+                            "helper_addresses": ["10.10.10.10"],
+                            "hsrp": [{"group": 10, "virtual_ip": "10.10.10.1", "priority": 110, "preempt": True}],
+                        },
+                        {
+                            "name": "GigabitEthernet0/1",
+                            "mode": "access",
+                            "access_vlan": 10,
+                            "channel_group": 1,
+                            "port_security": {"maximum": 2, "violation": "restrict", "sticky": True},
+                            "spanning_tree_bpduguard": True,
+                        },
+                    ],
+                    "nat": {"inside_source": [{"acl": "INSIDE-NAT", "interface": "GigabitEthernet0/0", "overload": True}]},
+                }
+            ]
+        }
+
+        rendered = render_inventory(inventory)["EDGE-SW1.cfg"]
+
+        self.assertIn("spanning-tree mode rapid-pvst", rendered)
+        self.assertIn("ip dhcp pool USERS", rendered)
+        self.assertIn("ip access-list extended INSIDE-NAT", rendered)
+        self.assertIn("ip nat outside", rendered)
+        self.assertIn("ip nat inside", rendered)
+        self.assertIn("ip nat inside source list INSIDE-NAT interface GigabitEthernet0/0 overload", rendered)
+        self.assertIn("standby 10 ip 10.10.10.1", rendered)
+        self.assertIn("ip helper-address 10.10.10.10", rendered)
+        self.assertIn("channel-group 1 mode active", rendered)
+        self.assertIn("switchport port-security maximum 2", rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -42,6 +42,15 @@ tests/                 單元測試
 - 基本 OSPF network statement
 - 基本 EIGRP network、passive-interface、no auto-summary
 - 基本 BGP neighbor、remote-as、router-id、network statement
+- STP mode、PortFast default、BPDU Guard default、VLAN priority
+- EtherChannel / Port-channel member `channel-group`
+- Access port Port Security
+- HSRP virtual gateway
+- DHCP excluded-address 與 DHCP pool
+- Named standard / extended ACL
+- Interface ACL apply
+- NAT inside/outside 與 overload
+- IP helper-address
 
 密碼或敏感資料可以用環境變數引用，例如 `${CISCO_NETADMIN_SECRET}`。如果環境變數沒有設定，產生的 config 會顯示 `__MISSING_ENV_CISCO_NETADMIN_SECRET__`，方便在部署前發現問題。
 
@@ -93,6 +102,61 @@ L2 設備會把 `0.0.0.0/0` static route 產生成 `ip default-gateway`，並禁
 }
 ```
 
+### 交換與常用 L3 功能
+
+除了 routing 區塊之外，也可以在設備或介面上加入常用功能：
+
+```json
+{
+  "spanning_tree": {
+    "mode": "rapid-pvst",
+    "portfast_default": true,
+    "bpduguard_default": true,
+    "vlan_priorities": [{ "vlans": [10, 20, 99], "priority": 4096 }]
+  },
+  "acls": [
+    {
+      "name": "INSIDE-NAT",
+      "type": "extended",
+      "entries": [
+        { "action": "permit", "protocol": "ip", "source": "10.10.10.0/24", "destination": "any" }
+      ]
+    }
+  ],
+  "dhcp": {
+    "excluded_addresses": [{ "start": "10.10.10.1", "end": "10.10.10.20" }],
+    "pools": [
+      {
+        "name": "USERS",
+        "network": "10.10.10.0/24",
+        "default_router": "10.10.10.1",
+        "dns_servers": ["1.1.1.1", "8.8.8.8"]
+      }
+    ]
+  },
+  "nat": {
+    "inside_source": [
+      { "acl": "INSIDE-NAT", "interface": "GigabitEthernet0/0", "overload": true }
+    ]
+  }
+}
+```
+
+介面也可以加入：
+
+```json
+{
+  "channel_group": 1,
+  "channel_mode": "active",
+  "nat_role": "inside",
+  "helper_addresses": ["10.10.10.10"],
+  "hsrp": [{ "group": 10, "virtual_ip": "10.10.10.1", "priority": 110, "preempt": true }],
+  "access_groups": [{ "name": "WAN-IN", "direction": "in" }],
+  "port_security": { "maximum": 2, "violation": "restrict", "sticky": true },
+  "spanning_tree_bpduguard": true
+}
+```
+
 ### 輸入限制
 
 為了避免產生不能貼進 Cisco CLI 的設定，產生器會擋掉中文、全形符號、換行、驚嘆號與常見非指令字元。Hostname、interface name、VLAN name、description、username、secret 等會進入 config 的欄位都會做檢查。
@@ -117,7 +181,7 @@ python -m configgen --check
 web/index.html
 ```
 
-打開後可以直接新增設備、編輯 VLAN/interface/static route/OSPF/EIGRP/BGP、匯入或匯出 `devices.json`，並複製或下載產生後的 `.cfg`。
+打開後可以直接新增設備、編輯 VLAN/interface/static route/OSPF/EIGRP/BGP、匯入或匯出 `devices.json`，並複製或下載產生後的 `.cfg`。進階功能例如 ACL、NAT、DHCP、HSRP、STP、EtherChannel、Port Security 可先透過匯入/匯出 JSON 編輯，右側預覽會產生對應設定。
 
 GUI 是純前端靜態檔案，不需要 npm、Flask 或其他後端服務。若要和 CLI 流程接軌，建議在 GUI 匯出 JSON 後覆蓋 `inventory/devices.json`，再執行：
 

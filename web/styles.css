@@ -347,6 +347,28 @@ textarea {
   color: var(--orange);
 }
 
+.protocol-badge.stp,
+.protocol-badge.lag,
+.protocol-badge.portsec {
+  border-color: #c7d8e8;
+  background: #f2f7fb;
+  color: #2e5f86;
+}
+
+.protocol-badge.acl,
+.protocol-badge.nat {
+  border-color: #d5c8f5;
+  background: #f6f2ff;
+  color: var(--violet);
+}
+
+.protocol-badge.dhcp,
+.protocol-badge.hsrp {
+  border-color: #d6d8b8;
+  background: #fbfbe9;
+  color: #6f6814;
+}
+
 .side-actions,
 .output-actions {
   display: flex;

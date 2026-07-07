@@ -20,14 +20,74 @@ const sampleInventory = {
       role: "branch-router",
       device_layer: "L3",
       platform: "ios",
+      spanning_tree: {
+        mode: "rapid-pvst",
+        vlan_priorities: [{ vlans: [10, 20, 99], priority: 4096 }],
+      },
+      acls: [
+        {
+          name: "INSIDE-NAT",
+          type: "extended",
+          entries: [{ action: "permit", protocol: "ip", source: "10.10.10.0/24", destination: "any" }],
+        },
+        {
+          name: "WAN-IN",
+          type: "extended",
+          entries: [
+            { remark: "Basic inbound WAN filter" },
+            { action: "deny", protocol: "ip", source: "any", destination: "10.10.10.0/24", log: true },
+            { action: "permit", protocol: "ip", source: "any", destination: "any" },
+          ],
+        },
+      ],
+      dhcp: {
+        excluded_addresses: [{ start: "10.10.10.1", end: "10.10.10.20" }],
+        pools: [
+          {
+            name: "USERS",
+            network: "10.10.10.0/24",
+            default_router: "10.10.10.1",
+            dns_servers: ["1.1.1.1", "8.8.8.8"],
+            domain_name: "lab.local",
+          },
+        ],
+      },
+      nat: {
+        inside_source: [{ acl: "INSIDE-NAT", interface: "GigabitEthernet0/0", overload: true }],
+      },
       interfaces: [
-        { name: "GigabitEthernet0/0", description: "WAN uplink", mode: "routed", address: "203.0.113.2/30" },
+        {
+          name: "GigabitEthernet0/0",
+          description: "WAN uplink",
+          mode: "routed",
+          address: "203.0.113.2/30",
+          nat_role: "outside",
+          access_groups: [{ name: "WAN-IN", direction: "in" }],
+        },
         {
           name: "GigabitEthernet0/1",
           description: "LAN trunk to access switch",
           mode: "trunk",
           native_vlan: 99,
           allowed_vlans: [10, 20, 99],
+          channel_group: 1,
+          channel_mode: "active",
+        },
+        {
+          name: "Port-channel1",
+          description: "LAN port-channel",
+          mode: "trunk",
+          native_vlan: 99,
+          allowed_vlans: [10, 20, 99],
+        },
+        {
+          name: "Vlan10",
+          description: "Users gateway",
+          mode: "svi",
+          address: "10.10.10.2/24",
+          nat_role: "inside",
+          helper_addresses: ["10.10.10.10"],
+          hsrp: [{ group: 10, virtual_ip: "10.10.10.1", priority: 110, preempt: true }],
         },
         { name: "Loopback0", description: "Router ID", mode: "loopback", address: "10.255.0.1/32" },
       ],
@@ -63,12 +123,20 @@ const sampleInventory = {
       role: "access-switch",
       device_layer: "L2",
       platform: "ios",
+      spanning_tree: { mode: "rapid-pvst", portfast_default: true, bpduguard_default: true },
       vlans: [
         { id: 10, name: "USERS" },
         { id: 20, name: "VOICE" },
         { id: 99, name: "MGMT" },
       ],
       interfaces: [
+        {
+          name: "Port-channel1",
+          description: "Uplink port-channel",
+          mode: "trunk",
+          native_vlan: 99,
+          allowed_vlans: [10, 20, 99],
+        },
         { name: "Vlan99", description: "Management SVI", mode: "svi", address: "10.99.0.11/24" },
         {
           name: "GigabitEthernet1/0/1",
@@ -76,6 +144,8 @@ const sampleInventory = {
           mode: "trunk",
           native_vlan: 99,
           allowed_vlans: [10, 20, 99],
+          channel_group: 1,
+          channel_mode: "active",
         },
         {
           name: "GigabitEthernet1/0/10",
@@ -84,6 +154,8 @@ const sampleInventory = {
           access_vlan: 10,
           voice_vlan: 20,
           spanning_tree_portfast: true,
+          spanning_tree_bpduguard: true,
+          port_security: { maximum: 2, violation: "restrict", sticky: true },
         },
       ],
       routing: {
@@ -275,6 +347,13 @@ function deviceTags(device) {
   const tags = [];
   if ((routing.static || []).length) tags.push(normalizedDeviceLayer(device) === "L2" ? "Gateway" : "Static");
   enabledDynamicProtocols(device).forEach((protocol) => tags.push(protocol.toUpperCase()));
+  if (device.spanning_tree) tags.push("STP");
+  if (device.acls?.length) tags.push("ACL");
+  if (device.nat?.inside_source?.length) tags.push("NAT");
+  if (device.dhcp?.pools?.length) tags.push("DHCP");
+  if ((device.interfaces || []).some((iface) => iface.hsrp?.length)) tags.push("HSRP");
+  if ((device.interfaces || []).some((iface) => iface.channel_group)) tags.push("LAG");
+  if ((device.interfaces || []).some((iface) => iface.port_security)) tags.push("PortSec");
   return tags;
 }
 
@@ -311,10 +390,14 @@ function renderDeviceForm() {
       selectField("Mode", "mode", item.mode || "routed", ["routed", "access", "trunk", "svi", "loopback"], "span-2"),
       field("Description", "description", item.description || "", "text", "span-4"),
       field("Address", "address", item.address || "", "text", "span-3 mode-l3"),
+      selectField("NAT", "nat_role", item.nat_role || "", ["", "inside", "outside"], "span-2 mode-l3"),
+      field("Helper", "helper_addresses", (item.helper_addresses || []).join(","), "text", "span-3 mode-l3"),
       field("Access VLAN", "access_vlan", item.access_vlan ?? "", "number", "span-2 mode-access", { min: 1, max: 4094 }),
       field("Voice VLAN", "voice_vlan", item.voice_vlan ?? "", "number", "span-2 mode-access", { min: 1, max: 4094 }),
       field("Native VLAN", "native_vlan", item.native_vlan ?? "", "number", "span-2 mode-trunk", { min: 1, max: 4094 }),
       field("Allowed VLANs", "allowed_vlans", (item.allowed_vlans || []).join(","), "text", "span-4 mode-trunk"),
+      field("Channel", "channel_group", item.channel_group ?? "", "number", "span-2", { min: 1 }),
+      selectField("LACP", "channel_mode", item.channel_mode || "active", ["active", "passive", "on", "auto", "desirable"], "span-2"),
       checkboxField("Portfast", "spanning_tree_portfast", !!item.spanning_tree_portfast, "span-2 mode-access"),
       checkboxField("Shutdown", "shutdown", !!item.shutdown, "span-2"),
     ]);
@@ -528,7 +611,7 @@ function sanitizeTargetInput(target) {
   if (key === "hostname") cleaned = original.replace(SANITIZE_RULES.hostname, "");
   else if (key === "name" && rowKind === "interface") cleaned = original.replace(SANITIZE_RULES.interface, "");
   else if (key === "update_source") cleaned = original.replace(SANITIZE_RULES.interface, "");
-  else if (["address", "destination", "next_hop", "prefix", "ospfRouterId", "eigrpRouterId", "bgpRouterId"].includes(key)) cleaned = original.replace(SANITIZE_RULES.ipList, "");
+  else if (["address", "destination", "next_hop", "prefix", "helper_addresses", "ospfRouterId", "eigrpRouterId", "bgpRouterId"].includes(key)) cleaned = original.replace(SANITIZE_RULES.ipList, "");
   else if (key === "eigrpPassiveInterfaces") cleaned = original.replace(SANITIZE_RULES.ipList, "");
   else if (["name_servers", "ntp_servers"].includes(key)) cleaned = original.replace(SANITIZE_RULES.ipList, "");
   else cleaned = original.replace(SANITIZE_RULES.cliText, "");
@@ -607,9 +690,14 @@ function updateRowFromEvent(event) {
     const iface = device.interfaces[index];
     if (key === "allowed_vlans") {
       iface[key] = splitList(value).map((item) => toNumber(item, item));
-    } else if (["access_vlan", "voice_vlan", "native_vlan"].includes(key)) {
+    } else if (key === "helper_addresses") {
+      iface[key] = splitList(value);
+    } else if (["access_vlan", "voice_vlan", "native_vlan", "channel_group"].includes(key)) {
       if (value === "") delete iface[key];
       else iface[key] = toNumber(value, value);
+    } else if (key === "nat_role") {
+      if (value === "") delete iface[key];
+      else iface[key] = value;
     } else if (["shutdown", "spanning_tree_portfast"].includes(key)) {
       iface[key] = value;
     } else {
@@ -700,6 +788,9 @@ function renderDevice(defaults, device) {
   }
 
   add("!");
+  renderSpanningTree(lines, device.spanning_tree || {});
+  renderDhcp(lines, device.dhcp || {});
+  renderAcls(lines, device.acls || []);
   [...(device.vlans || [])]
     .sort((a, b) => Number(a.id) - Number(b.id))
     .forEach((vlan) => {
@@ -709,6 +800,7 @@ function renderDevice(defaults, device) {
     });
 
   (device.interfaces || []).forEach((iface) => renderInterface(lines, iface));
+  renderNat(lines, device.nat || {});
   renderRouting(lines, device.routing || {}, layer);
   add("line vty 0 4");
   add(users.length ? " login local" : " no login");
@@ -716,6 +808,42 @@ function renderDevice(defaults, device) {
   add("!");
   add("end");
   return `${lines.join("\n").trimEnd()}\n`;
+}
+
+function renderSpanningTree(lines, spanningTree) {
+  if (!Object.keys(spanningTree).length) return;
+  if (spanningTree.mode) lines.push(`spanning-tree mode ${spanningTree.mode}`);
+  if (spanningTree.portfast_default) lines.push("spanning-tree portfast default");
+  if (spanningTree.bpduguard_default) lines.push("spanning-tree portfast bpduguard default");
+  (spanningTree.vlan_priorities || []).forEach((item) => {
+    lines.push(`spanning-tree vlan ${(item.vlans || []).map(Number).join(",")} priority ${Number(item.priority)}`);
+  });
+  lines.push("!");
+}
+
+function renderDhcp(lines, dhcp) {
+  (dhcp.excluded_addresses || []).forEach((item) => {
+    if (typeof item === "string") lines.push(`ip dhcp excluded-address ${item}`);
+    else lines.push(`ip dhcp excluded-address ${item.start}${item.end ? ` ${item.end}` : ""}`);
+  });
+  (dhcp.pools || []).forEach((pool) => {
+    const prefix = parseIpv4Prefix(required(pool.network, "dhcp pool network"));
+    lines.push(`ip dhcp pool ${required(pool.name, "dhcp pool name")}`);
+    lines.push(` network ${intToIp(prefix.network)} ${intToIp(prefix.mask)}`);
+    if (pool.default_router) lines.push(` default-router ${pool.default_router}`);
+    if (pool.dns_servers?.length) lines.push(` dns-server ${pool.dns_servers.join(" ")}`);
+    if (pool.domain_name) lines.push(` domain-name ${pool.domain_name}`);
+    lines.push("!");
+  });
+}
+
+function renderAcls(lines, acls) {
+  acls.forEach((acl) => {
+    const aclType = acl.type || "extended";
+    lines.push(`ip access-list ${aclType} ${required(acl.name, "acl name")}`);
+    (acl.entries || []).forEach((entry) => lines.push(` ${formatAclEntry(entry, aclType)}`));
+    lines.push("!");
+  });
 }
 
 function renderInterface(lines, iface) {
@@ -744,8 +872,37 @@ function renderInterface(lines, iface) {
     if (iface.native_vlan) lines.push(` switchport trunk native vlan ${Number(iface.native_vlan)}`);
     if (iface.allowed_vlans?.length) lines.push(` switchport trunk allowed vlan ${iface.allowed_vlans.map(Number).join(",")}`);
   }
+  renderInterfaceFeatures(lines, iface);
   if (mode !== "loopback") lines.push(iface.shutdown ? " shutdown" : " no shutdown");
   lines.push("!");
+}
+
+function renderInterfaceFeatures(lines, iface) {
+  (iface.helper_addresses || []).forEach((address) => lines.push(` ip helper-address ${address}`));
+  (iface.hsrp || []).forEach((group) => {
+    lines.push(` standby ${Number(group.group)} ip ${required(group.virtual_ip, "hsrp virtual ip")}`);
+    if (group.priority) lines.push(` standby ${Number(group.group)} priority ${Number(group.priority)}`);
+    if (group.preempt) lines.push(` standby ${Number(group.group)} preempt`);
+  });
+  (iface.access_groups || []).forEach((item) => lines.push(` ip access-group ${item.name} ${item.direction}`));
+  if (iface.nat_role) lines.push(` ip nat ${iface.nat_role}`);
+  if (iface.channel_group) lines.push(` channel-group ${Number(iface.channel_group)} mode ${iface.channel_mode || "active"}`);
+  if (iface.port_security) {
+    lines.push(" switchport port-security");
+    if (iface.port_security.maximum) lines.push(` switchport port-security maximum ${Number(iface.port_security.maximum)}`);
+    if (iface.port_security.violation) lines.push(` switchport port-security violation ${iface.port_security.violation}`);
+    if (iface.port_security.sticky) lines.push(" switchport port-security mac-address sticky");
+  }
+  if (iface.spanning_tree_bpduguard) lines.push(" spanning-tree bpduguard enable");
+}
+
+function renderNat(lines, nat) {
+  (nat.inside_source || []).forEach((item) => {
+    let line = `ip nat inside source list ${required(item.acl, "nat acl")} interface ${required(item.interface, "nat interface")}`;
+    if (item.overload !== false) line += " overload";
+    lines.push(line);
+  });
+  if ((nat.inside_source || []).length) lines.push("!");
 }
 
 function renderRouting(lines, routing, layer = "L3") {
@@ -802,6 +959,36 @@ function renderRouting(lines, routing, layer = "L3") {
   if ((routing.static || []).length || routing.ospf || routing.eigrp || routing.bgp) lines.push("!");
 }
 
+function formatAclEntry(entry, aclType) {
+  if (entry.remark) return `remark ${entry.remark}`;
+  const sequence = entry.sequence ? `${Number(entry.sequence)} ` : "";
+  const action = entry.action || "permit";
+  const source = formatAclEndpoint(entry.source || "any");
+  let line;
+  if (aclType === "standard") {
+    line = `${sequence}${action} ${source}`;
+  } else {
+    const protocol = entry.protocol || "ip";
+    const destination = formatAclEndpoint(entry.destination || "any");
+    line = `${sequence}${action} ${protocol} ${source} ${destination}`;
+    if (entry.destination_port) line += ` eq ${entry.destination_port}`;
+  }
+  if (entry.log) line += " log";
+  return line;
+}
+
+function formatAclEndpoint(value) {
+  const text = String(value || "any");
+  if (text === "any") return "any";
+  if (text.includes("/")) {
+    const prefix = parseIpv4Prefix(text);
+    if (prefix.length === 32) return `host ${intToIp(prefix.network)}`;
+    return `${intToIp(prefix.network)} ${intToIp(prefix.hostmask)}`;
+  }
+  ipToInt(text);
+  return `host ${text}`;
+}
+
 function validateInventory(inventory) {
   const errors = [];
   const defaults = inventory.defaults || {};
@@ -847,6 +1034,14 @@ function validateInventory(inventory) {
       validateCliSafe(iface.description, `${device.hostname}.${iface.name}.description`, errors);
       if (layer === "L2" && ["routed", "loopback"].includes(iface.mode)) errors.push(`${device.hostname}.${iface.name}: L2 設備不允許 ${iface.mode} 介面`);
       if (iface.address) validatePrefix(iface.address, `${device.hostname}.${iface.name}.address`, errors);
+      if (layer === "L2" && iface.nat_role) errors.push(`${device.hostname}.${iface.name}: L2 設備不允許 NAT role`);
+      (iface.helper_addresses || []).forEach((address, helperIndex) => {
+        validateIp(address, `${device.hostname}.${iface.name}.helper_addresses[${helperIndex}]`, errors);
+      });
+      if (iface.channel_group) {
+        const channelGroup = Number(iface.channel_group);
+        if (!Number.isInteger(channelGroup) || channelGroup < 1) errors.push(`${device.hostname}.${iface.name}.channel_group 必須大於 0`);
+      }
       if (iface.mode === "access" && !iface.access_vlan) errors.push(`${device.hostname}.${iface.name}.access_vlan 必填`);
     });
 

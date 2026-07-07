@@ -20,6 +20,12 @@ INTERFACE_NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9/_.:-]*$")
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+$")
 INTERFACE_MODES = {"routed", "access", "trunk", "svi", "loopback"}
 DEVICE_LAYERS = {"L2", "L3"}
+ACL_TYPES = {"standard", "extended"}
+ACL_ACTIONS = {"permit", "deny"}
+CHANNEL_MODES = {"active", "passive", "on", "auto", "desirable"}
+NAT_ROLES = {"inside", "outside"}
+STP_MODES = {"pvst", "rapid-pvst", "mst"}
+PORT_SECURITY_VIOLATIONS = {"protect", "restrict", "shutdown"}
 
 
 def load_inventory(path: Path) -> dict[str, Any]:
@@ -91,8 +97,12 @@ def render_device(defaults: dict[str, Any], device: dict[str, Any]) -> str:
         add(f"crypto key generate rsa modulus {int(ssh.get('modulus', 2048))}")
 
     add("!")
+    render_spanning_tree(lines, device.get("spanning_tree", {}))
+    render_dhcp(lines, device.get("dhcp", {}))
+    render_acls(lines, device.get("acls", []))
     render_vlans(lines, device.get("vlans", []))
     render_interfaces(lines, device.get("interfaces", []))
+    render_nat(lines, device.get("nat", {}))
     render_routing(lines, device.get("routing", {}), device_layer)
     render_vty(lines, defaults, device, bool(local_users))
     add("end")
@@ -105,6 +115,51 @@ def render_vlans(lines: list[str], vlans: list[dict[str, Any]]) -> None:
         lines.append(f"vlan {int(vlan['id'])}")
         if vlan.get("name"):
             lines.append(f" name {vlan['name']}")
+        lines.append("!")
+
+
+def render_spanning_tree(lines: list[str], spanning_tree: dict[str, Any]) -> None:
+    if not spanning_tree:
+        return
+    if spanning_tree.get("mode"):
+        lines.append(f"spanning-tree mode {spanning_tree['mode']}")
+    if spanning_tree.get("portfast_default"):
+        lines.append("spanning-tree portfast default")
+    if spanning_tree.get("bpduguard_default"):
+        lines.append("spanning-tree portfast bpduguard default")
+    for item in spanning_tree.get("vlan_priorities", []):
+        lines.append(f"spanning-tree vlan {format_vlan_list(item['vlans'])} priority {int(item['priority'])}")
+    lines.append("!")
+
+
+def render_dhcp(lines: list[str], dhcp: dict[str, Any]) -> None:
+    if not dhcp:
+        return
+    for item in dhcp.get("excluded_addresses", []):
+        if isinstance(item, str):
+            lines.append(f"ip dhcp excluded-address {item}")
+        else:
+            end = f" {item['end']}" if item.get("end") else ""
+            lines.append(f"ip dhcp excluded-address {item['start']}{end}")
+    for pool in dhcp.get("pools", []):
+        network = ipaddress.ip_network(pool["network"], strict=False)
+        lines.append(f"ip dhcp pool {pool['name']}")
+        lines.append(f" network {network.network_address} {network.netmask}")
+        if pool.get("default_router"):
+            lines.append(f" default-router {pool['default_router']}")
+        if pool.get("dns_servers"):
+            lines.append(f" dns-server {' '.join(pool['dns_servers'])}")
+        if pool.get("domain_name"):
+            lines.append(f" domain-name {pool['domain_name']}")
+        lines.append("!")
+
+
+def render_acls(lines: list[str], acls: list[dict[str, Any]]) -> None:
+    for acl in acls:
+        acl_type = acl.get("type", "extended")
+        lines.append(f"ip access-list {acl_type} {acl['name']}")
+        for entry in acl.get("entries", []):
+            lines.append(f" {format_acl_entry(entry, acl_type)}")
         lines.append("!")
 
 
@@ -137,9 +192,39 @@ def render_interfaces(lines: list[str], interfaces: list[dict[str, Any]]) -> Non
             if interface.get("allowed_vlans"):
                 lines.append(f" switchport trunk allowed vlan {format_vlan_list(interface['allowed_vlans'])}")
 
+        render_interface_features(lines, interface)
         if mode != "loopback":
             lines.append(" shutdown" if interface.get("shutdown", False) else " no shutdown")
         lines.append("!")
+
+
+def render_interface_features(lines: list[str], interface: dict[str, Any]) -> None:
+    for helper in interface.get("helper_addresses", []):
+        lines.append(f" ip helper-address {helper}")
+    for group in interface.get("hsrp", []):
+        group_id = int(group["group"])
+        lines.append(f" standby {group_id} ip {group['virtual_ip']}")
+        if group.get("priority"):
+            lines.append(f" standby {group_id} priority {int(group['priority'])}")
+        if group.get("preempt"):
+            lines.append(f" standby {group_id} preempt")
+    for item in interface.get("access_groups", []):
+        lines.append(f" ip access-group {item['name']} {item['direction']}")
+    if interface.get("nat_role"):
+        lines.append(f" ip nat {interface['nat_role']}")
+    if interface.get("channel_group"):
+        lines.append(f" channel-group {int(interface['channel_group'])} mode {interface.get('channel_mode', 'active')}")
+    port_security = interface.get("port_security")
+    if port_security:
+        lines.append(" switchport port-security")
+        if port_security.get("maximum"):
+            lines.append(f" switchport port-security maximum {int(port_security['maximum'])}")
+        if port_security.get("violation"):
+            lines.append(f" switchport port-security violation {port_security['violation']}")
+        if port_security.get("sticky"):
+            lines.append(" switchport port-security mac-address sticky")
+    if interface.get("spanning_tree_bpduguard"):
+        lines.append(" spanning-tree bpduguard enable")
 
 
 def render_layer3_address(lines: list[str], interface: dict[str, Any]) -> None:
@@ -148,6 +233,16 @@ def render_layer3_address(lines: list[str], interface: dict[str, Any]) -> None:
         lines.append(f" ip address {address} {netmask}")
     else:
         lines.append(" no ip address")
+
+
+def render_nat(lines: list[str], nat: dict[str, Any]) -> None:
+    for item in nat.get("inside_source", []):
+        line = f"ip nat inside source list {item['acl']} interface {item['interface']}"
+        if item.get("overload", True):
+            line += " overload"
+        lines.append(line)
+    if nat.get("inside_source"):
+        lines.append("!")
 
 
 def render_routing(lines: list[str], routing: dict[str, Any], device_layer: str = "L3") -> None:
@@ -249,8 +344,12 @@ def validate_inventory(inventory: dict[str, Any]) -> None:
             else:
                 seen_hostnames.add(hostname)
             errors.extend(validate_device_metadata(device, index))
+            errors.extend(validate_spanning_tree(device, index))
+            errors.extend(validate_dhcp(device, index))
+            errors.extend(validate_acls(device, index))
             errors.extend(validate_vlans(device, index))
             errors.extend(validate_interfaces(device, index))
+            errors.extend(validate_nat(device, index))
             errors.extend(validate_routing(device, index))
 
     if errors:
@@ -291,6 +390,79 @@ def validate_device_metadata(device: dict[str, Any], device_index: int) -> list[
 
     for user_index, user in enumerate(device.get("local_users", [])):
         errors.extend(validate_user(user, f"devices[{device_index}].local_users[{user_index}]"))
+    return errors
+
+
+def validate_spanning_tree(device: dict[str, Any], device_index: int) -> list[str]:
+    errors = []
+    spanning_tree = device.get("spanning_tree", {})
+    if not spanning_tree:
+        return errors
+    if spanning_tree.get("mode") and spanning_tree["mode"] not in STP_MODES:
+        errors.append(f"devices[{device_index}].spanning_tree.mode must be one of {sorted(STP_MODES)}")
+    for index, item in enumerate(spanning_tree.get("vlan_priorities", [])):
+        for vlan_id in item.get("vlans", []):
+            errors.extend(validate_vlan_number(vlan_id, f"devices[{device_index}].spanning_tree.vlan_priorities[{index}].vlans"))
+        try:
+            priority = int(item["priority"])
+            if priority < 0 or priority > 61440 or priority % 4096 != 0:
+                errors.append(f"devices[{device_index}].spanning_tree.vlan_priorities[{index}].priority must be 0-61440 in 4096 steps")
+        except (KeyError, TypeError, ValueError):
+            errors.append(f"devices[{device_index}].spanning_tree.vlan_priorities[{index}].priority must be an integer")
+    return errors
+
+
+def validate_dhcp(device: dict[str, Any], device_index: int) -> list[str]:
+    errors = []
+    dhcp = device.get("dhcp", {})
+    if not dhcp:
+        return errors
+    if normalized_device_layer(device) == "L2":
+        errors.append(f"devices[{device_index}].dhcp is not allowed on L2 devices")
+    for index, item in enumerate(dhcp.get("excluded_addresses", [])):
+        if isinstance(item, str):
+            errors.extend(validate_ip_address(item, f"devices[{device_index}].dhcp.excluded_addresses[{index}]"))
+        else:
+            errors.extend(validate_ip_address(item.get("start"), f"devices[{device_index}].dhcp.excluded_addresses[{index}].start"))
+            if item.get("end"):
+                errors.extend(validate_ip_address(item["end"], f"devices[{device_index}].dhcp.excluded_addresses[{index}].end"))
+    for index, pool in enumerate(dhcp.get("pools", [])):
+        if pool.get("name"):
+            errors.extend(validate_cli_safe(str(pool["name"]), f"devices[{device_index}].dhcp.pools[{index}].name"))
+        else:
+            errors.append(f"devices[{device_index}].dhcp.pools[{index}].name is required")
+        errors.extend(validate_ip_network(pool.get("network"), f"devices[{device_index}].dhcp.pools[{index}].network"))
+        if pool.get("default_router"):
+            errors.extend(validate_ip_address(pool["default_router"], f"devices[{device_index}].dhcp.pools[{index}].default_router"))
+        for server_index, server in enumerate(pool.get("dns_servers", [])):
+            errors.extend(validate_ip_address(server, f"devices[{device_index}].dhcp.pools[{index}].dns_servers[{server_index}]"))
+        if pool.get("domain_name"):
+            errors.extend(validate_cli_safe(str(pool["domain_name"]), f"devices[{device_index}].dhcp.pools[{index}].domain_name"))
+    return errors
+
+
+def validate_acls(device: dict[str, Any], device_index: int) -> list[str]:
+    errors = []
+    for index, acl in enumerate(device.get("acls", [])):
+        if acl.get("name"):
+            errors.extend(validate_cli_safe(str(acl["name"]), f"devices[{device_index}].acls[{index}].name"))
+        else:
+            errors.append(f"devices[{device_index}].acls[{index}].name is required")
+        acl_type = acl.get("type", "extended")
+        if acl_type not in ACL_TYPES:
+            errors.append(f"devices[{device_index}].acls[{index}].type must be standard or extended")
+        for entry_index, entry in enumerate(acl.get("entries", [])):
+            if entry.get("remark"):
+                errors.extend(validate_cli_safe(str(entry["remark"]), f"devices[{device_index}].acls[{index}].entries[{entry_index}].remark"))
+                continue
+            if entry.get("action", "permit") not in ACL_ACTIONS:
+                errors.append(f"devices[{device_index}].acls[{index}].entries[{entry_index}].action must be permit or deny")
+            for key in ("protocol", "destination_port"):
+                if entry.get(key):
+                    errors.extend(validate_cli_safe(str(entry[key]), f"devices[{device_index}].acls[{index}].entries[{entry_index}].{key}"))
+            errors.extend(validate_acl_endpoint(entry.get("source", "any"), f"devices[{device_index}].acls[{index}].entries[{entry_index}].source"))
+            if acl_type == "extended":
+                errors.extend(validate_acl_endpoint(entry.get("destination", "any"), f"devices[{device_index}].acls[{index}].entries[{entry_index}].destination"))
     return errors
 
 
@@ -341,6 +513,76 @@ def validate_interfaces(device: dict[str, Any], device_index: int) -> list[str]:
                 errors.extend(validate_vlan_number(vlan_id, f"devices[{device_index}].interfaces[{index}].allowed_vlans"))
         if interface.get("description"):
             errors.extend(validate_cli_safe(str(interface["description"]), f"devices[{device_index}].interfaces[{index}].description"))
+        if interface.get("channel_group"):
+            try:
+                group = int(interface["channel_group"])
+                if group < 1:
+                    errors.append(f"devices[{device_index}].interfaces[{index}].channel_group must be greater than 0")
+            except (TypeError, ValueError):
+                errors.append(f"devices[{device_index}].interfaces[{index}].channel_group must be an integer")
+            if interface.get("channel_mode", "active") not in CHANNEL_MODES:
+                errors.append(f"devices[{device_index}].interfaces[{index}].channel_mode must be one of {sorted(CHANNEL_MODES)}")
+        if interface.get("nat_role"):
+            if device_layer == "L2":
+                errors.append(f"devices[{device_index}].interfaces[{index}].nat_role is not allowed on L2 devices")
+            if interface["nat_role"] not in NAT_ROLES:
+                errors.append(f"devices[{device_index}].interfaces[{index}].nat_role must be inside or outside")
+        for helper_index, helper in enumerate(interface.get("helper_addresses", [])):
+            errors.extend(validate_ip_address(helper, f"devices[{device_index}].interfaces[{index}].helper_addresses[{helper_index}]"))
+        for group_index, group in enumerate(interface.get("hsrp", [])):
+            if device_layer == "L2":
+                errors.append(f"devices[{device_index}].interfaces[{index}].hsrp is not allowed on L2 devices")
+            try:
+                group_id = int(group["group"])
+                if group_id < 0 or group_id > 255:
+                    errors.append(f"devices[{device_index}].interfaces[{index}].hsrp[{group_index}].group must be 0-255")
+            except (KeyError, TypeError, ValueError):
+                errors.append(f"devices[{device_index}].interfaces[{index}].hsrp[{group_index}].group must be an integer")
+            errors.extend(validate_ip_address(group.get("virtual_ip"), f"devices[{device_index}].interfaces[{index}].hsrp[{group_index}].virtual_ip"))
+            if group.get("priority"):
+                try:
+                    priority = int(group["priority"])
+                    if priority < 1 or priority > 255:
+                        errors.append(f"devices[{device_index}].interfaces[{index}].hsrp[{group_index}].priority must be 1-255")
+                except (TypeError, ValueError):
+                    errors.append(f"devices[{device_index}].interfaces[{index}].hsrp[{group_index}].priority must be an integer")
+        for acl_index, item in enumerate(interface.get("access_groups", [])):
+            if item.get("direction") not in {"in", "out"}:
+                errors.append(f"devices[{device_index}].interfaces[{index}].access_groups[{acl_index}].direction must be in or out")
+            if item.get("name"):
+                errors.extend(validate_cli_safe(str(item["name"]), f"devices[{device_index}].interfaces[{index}].access_groups[{acl_index}].name"))
+            else:
+                errors.append(f"devices[{device_index}].interfaces[{index}].access_groups[{acl_index}].name is required")
+        port_security = interface.get("port_security")
+        if port_security:
+            try:
+                maximum = int(port_security.get("maximum", 1))
+                if maximum < 1:
+                    errors.append(f"devices[{device_index}].interfaces[{index}].port_security.maximum must be greater than 0")
+            except (TypeError, ValueError):
+                errors.append(f"devices[{device_index}].interfaces[{index}].port_security.maximum must be an integer")
+            if port_security.get("violation") and port_security["violation"] not in PORT_SECURITY_VIOLATIONS:
+                errors.append(f"devices[{device_index}].interfaces[{index}].port_security.violation must be one of {sorted(PORT_SECURITY_VIOLATIONS)}")
+    return errors
+
+
+def validate_nat(device: dict[str, Any], device_index: int) -> list[str]:
+    errors = []
+    nat = device.get("nat", {})
+    if not nat:
+        return errors
+    if normalized_device_layer(device) == "L2":
+        errors.append(f"devices[{device_index}].nat is not allowed on L2 devices")
+    for index, item in enumerate(nat.get("inside_source", [])):
+        if item.get("acl"):
+            errors.extend(validate_cli_safe(str(item["acl"]), f"devices[{device_index}].nat.inside_source[{index}].acl"))
+        else:
+            errors.append(f"devices[{device_index}].nat.inside_source[{index}].acl is required")
+        if item.get("interface"):
+            if not INTERFACE_NAME_PATTERN.fullmatch(str(item["interface"])):
+                errors.append(f"devices[{device_index}].nat.inside_source[{index}].interface contains invalid CLI characters")
+        else:
+            errors.append(f"devices[{device_index}].nat.inside_source[{index}].interface is required")
     return errors
 
 
@@ -461,6 +703,36 @@ def validate_ip_interface(value: str, field: str) -> list[str]:
         return [f"{field} must be a valid interface prefix, for example 10.0.0.1/24"]
 
 
+def validate_ip_address(value: Any, field: str) -> list[str]:
+    try:
+        ipaddress.ip_address(str(value))
+        return []
+    except ValueError:
+        return [f"{field} must be a valid IP"]
+
+
+def validate_ip_network(value: Any, field: str) -> list[str]:
+    try:
+        ipaddress.ip_network(str(value), strict=False)
+        return []
+    except ValueError:
+        return [f"{field} must be a valid prefix"]
+
+
+def validate_acl_endpoint(value: Any, field: str) -> list[str]:
+    text = str(value)
+    if text == "any":
+        return []
+    try:
+        if "/" in text:
+            ipaddress.ip_network(text, strict=False)
+        else:
+            ipaddress.ip_address(text)
+        return []
+    except ValueError:
+        return [f"{field} must be any, an IP, or a prefix"]
+
+
 def validate_vlan_number(value: Any, field: str) -> list[str]:
     try:
         vlan_id = int(value)
@@ -494,6 +766,41 @@ def wildcard_mask(prefix: ipaddress.IPv4Network) -> str:
 
 def format_vlan_list(values: list[Any]) -> str:
     return ",".join(str(int(value)) for value in values)
+
+
+def format_acl_entry(entry: dict[str, Any], acl_type: str) -> str:
+    if entry.get("remark"):
+        return f"remark {entry['remark']}"
+
+    sequence = f"{int(entry['sequence'])} " if entry.get("sequence") else ""
+    action = entry.get("action", "permit")
+    source = format_acl_endpoint(entry.get("source", "any"))
+
+    if acl_type == "standard":
+        line = f"{sequence}{action} {source}"
+    else:
+        protocol = entry.get("protocol", "ip")
+        destination = format_acl_endpoint(entry.get("destination", "any"))
+        line = f"{sequence}{action} {protocol} {source} {destination}"
+        if entry.get("destination_port"):
+            line += f" eq {entry['destination_port']}"
+
+    if entry.get("log"):
+        line += " log"
+    return line
+
+
+def format_acl_endpoint(value: Any) -> str:
+    text = str(value)
+    if text == "any":
+        return "any"
+    if "/" in text:
+        network = ipaddress.ip_network(text, strict=False)
+        if network.prefixlen == 32:
+            return f"host {network.network_address}"
+        return f"{network.network_address} {network.hostmask}"
+    ipaddress.ip_address(text)
+    return f"host {text}"
 
 
 def safe_filename(value: str) -> str:

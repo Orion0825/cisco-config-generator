@@ -25,19 +25,122 @@
       "role": "branch-router",
       "device_layer": "L3",
       "platform": "ios",
+      "spanning_tree": {
+        "mode": "rapid-pvst",
+        "vlan_priorities": [
+          {
+            "vlans": [10, 20, 99],
+            "priority": 4096
+          }
+        ]
+      },
+      "acls": [
+        {
+          "name": "INSIDE-NAT",
+          "type": "extended",
+          "entries": [
+            {
+              "action": "permit",
+              "protocol": "ip",
+              "source": "10.10.10.0/24",
+              "destination": "any"
+            }
+          ]
+        },
+        {
+          "name": "WAN-IN",
+          "type": "extended",
+          "entries": [
+            {
+              "remark": "Basic inbound WAN filter"
+            },
+            {
+              "action": "deny",
+              "protocol": "ip",
+              "source": "any",
+              "destination": "10.10.10.0/24",
+              "log": true
+            },
+            {
+              "action": "permit",
+              "protocol": "ip",
+              "source": "any",
+              "destination": "any"
+            }
+          ]
+        }
+      ],
+      "dhcp": {
+        "excluded_addresses": [
+          {
+            "start": "10.10.10.1",
+            "end": "10.10.10.20"
+          }
+        ],
+        "pools": [
+          {
+            "name": "USERS",
+            "network": "10.10.10.0/24",
+            "default_router": "10.10.10.1",
+            "dns_servers": ["1.1.1.1", "8.8.8.8"],
+            "domain_name": "lab.local"
+          }
+        ]
+      },
+      "nat": {
+        "inside_source": [
+          {
+            "acl": "INSIDE-NAT",
+            "interface": "GigabitEthernet0/0",
+            "overload": true
+          }
+        ]
+      },
       "interfaces": [
         {
           "name": "GigabitEthernet0/0",
           "description": "WAN uplink",
           "mode": "routed",
-          "address": "203.0.113.2/30"
+          "address": "203.0.113.2/30",
+          "nat_role": "outside",
+          "access_groups": [
+            {
+              "name": "WAN-IN",
+              "direction": "in"
+            }
+          ]
         },
         {
           "name": "GigabitEthernet0/1",
           "description": "LAN trunk to access switch",
           "mode": "trunk",
           "native_vlan": 99,
+          "allowed_vlans": [10, 20, 99],
+          "channel_group": 1,
+          "channel_mode": "active"
+        },
+        {
+          "name": "Port-channel1",
+          "description": "LAN port-channel",
+          "mode": "trunk",
+          "native_vlan": 99,
           "allowed_vlans": [10, 20, 99]
+        },
+        {
+          "name": "Vlan10",
+          "description": "Users gateway",
+          "mode": "svi",
+          "address": "10.10.10.2/24",
+          "nat_role": "inside",
+          "helper_addresses": ["10.10.10.10"],
+          "hsrp": [
+            {
+              "group": 10,
+              "virtual_ip": "10.10.10.1",
+              "priority": 110,
+              "preempt": true
+            }
+          ]
         },
         {
           "name": "Loopback0",
@@ -111,6 +214,11 @@
       "role": "access-switch",
       "device_layer": "L2",
       "platform": "ios",
+      "spanning_tree": {
+        "mode": "rapid-pvst",
+        "portfast_default": true,
+        "bpduguard_default": true
+      },
       "vlans": [
         {
           "id": 10,
@@ -127,6 +235,13 @@
       ],
       "interfaces": [
         {
+          "name": "Port-channel1",
+          "description": "Uplink port-channel",
+          "mode": "trunk",
+          "native_vlan": 99,
+          "allowed_vlans": [10, 20, 99]
+        },
+        {
           "name": "Vlan99",
           "description": "Management SVI",
           "mode": "svi",
@@ -137,7 +252,9 @@
           "description": "Uplink to BRANCH-R1",
           "mode": "trunk",
           "native_vlan": 99,
-          "allowed_vlans": [10, 20, 99]
+          "allowed_vlans": [10, 20, 99],
+          "channel_group": 1,
+          "channel_mode": "active"
         },
         {
           "name": "GigabitEthernet1/0/10",
@@ -145,7 +262,13 @@
           "mode": "access",
           "access_vlan": 10,
           "voice_vlan": 20,
-          "spanning_tree_portfast": true
+          "spanning_tree_portfast": true,
+          "spanning_tree_bpduguard": true,
+          "port_security": {
+            "maximum": 2,
+            "violation": "restrict",
+            "sticky": true
+          }
         }
       ],
       "routing": {

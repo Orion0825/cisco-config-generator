@@ -166,6 +166,12 @@ const sampleInventory = {
 };
 
 const DEVICE_LAYERS = new Set(["L2", "L3"]);
+const ACL_TYPES = new Set(["standard", "extended"]);
+const ACL_ACTIONS = new Set(["permit", "deny"]);
+const CHANNEL_MODES = new Set(["active", "passive", "on", "auto", "desirable"]);
+const NAT_ROLES = new Set(["inside", "outside"]);
+const PORT_SECURITY_VIOLATIONS = new Set(["protect", "restrict", "shutdown"]);
+const STP_MODES = new Set(["pvst", "rapid-pvst", "mst"]);
 const CLI_SAFE_PATTERN = /^[A-Za-z0-9 _./:,@#()+=$*{}-]*$/;
 const HOSTNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/;
 const INTERFACE_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9/_.:-]*$/;
@@ -272,7 +278,8 @@ function normalizeInventory(inventory) {
   normalized.defaults.local_users ||= [];
   normalized.devices ||= [];
   normalized.devices.forEach((device) => {
-    device.device_layer = normalizedDeviceLayer(device);
+    const rawLayer = String(device.device_layer || "L3").toUpperCase();
+    if (DEVICE_LAYERS.has(rawLayer)) device.device_layer = rawLayer;
     device.vlans ||= [];
     device.interfaces ||= [];
     device.acls ||= [];
@@ -375,10 +382,10 @@ function deviceTags(device) {
   const tags = [];
   if ((routing.static || []).length) tags.push(normalizedDeviceLayer(device) === "L2" ? "Gateway" : "Static");
   enabledDynamicProtocols(device).forEach((protocol) => tags.push(protocol.toUpperCase()));
-  if (device.spanning_tree) tags.push("STP");
+  if (hasSpanningTreeConfig(device.spanning_tree)) tags.push("STP");
   if (device.acls?.length) tags.push("ACL");
-  if (device.nat?.inside_source?.length) tags.push("NAT");
-  if (device.dhcp?.pools?.length) tags.push("DHCP");
+  if (hasNatConfig(device.nat)) tags.push("NAT");
+  if (hasDhcpConfig(device.dhcp)) tags.push("DHCP");
   if ((device.interfaces || []).some((iface) => iface.hsrp?.length)) tags.push("HSRP");
   if ((device.interfaces || []).some((iface) => iface.channel_group)) tags.push("LAG");
   if ((device.interfaces || []).some((iface) => iface.port_security)) tags.push("PortSec");
@@ -1046,7 +1053,7 @@ function renderDevice(defaults, device) {
 }
 
 function renderSpanningTree(lines, spanningTree) {
-  if (!Object.keys(spanningTree).length) return;
+  if (!hasSpanningTreeConfig(spanningTree)) return;
   if (spanningTree.mode) lines.push(`spanning-tree mode ${spanningTree.mode}`);
   if (spanningTree.portfast_default) lines.push("spanning-tree portfast default");
   if (spanningTree.bpduguard_default) lines.push("spanning-tree portfast bpduguard default");
@@ -1057,6 +1064,7 @@ function renderSpanningTree(lines, spanningTree) {
 }
 
 function renderDhcp(lines, dhcp) {
+  if (!hasDhcpConfig(dhcp)) return;
   (dhcp.excluded_addresses || []).forEach((item) => {
     if (typeof item === "string") lines.push(`ip dhcp excluded-address ${item}`);
     else lines.push(`ip dhcp excluded-address ${item.start}${item.end ? ` ${item.end}` : ""}`);
@@ -1115,9 +1123,10 @@ function renderInterface(lines, iface) {
 function renderInterfaceFeatures(lines, iface) {
   (iface.helper_addresses || []).forEach((address) => lines.push(` ip helper-address ${address}`));
   (iface.hsrp || []).forEach((group) => {
-    lines.push(` standby ${Number(group.group)} ip ${required(group.virtual_ip, "hsrp virtual ip")}`);
-    if (group.priority) lines.push(` standby ${Number(group.group)} priority ${Number(group.priority)}`);
-    if (group.preempt) lines.push(` standby ${Number(group.group)} preempt`);
+    const groupId = Number(required(group.group, "hsrp group"));
+    lines.push(` standby ${groupId} ip ${required(group.virtual_ip, "hsrp virtual ip")}`);
+    if (group.priority) lines.push(` standby ${groupId} priority ${Number(group.priority)}`);
+    if (group.preempt) lines.push(` standby ${groupId} preempt`);
   });
   (iface.access_groups || []).forEach((item) => lines.push(` ip access-group ${item.name} ${item.direction}`));
   if (iface.nat_role) lines.push(` ip nat ${iface.nat_role}`);
@@ -1132,6 +1141,7 @@ function renderInterfaceFeatures(lines, iface) {
 }
 
 function renderNat(lines, nat) {
+  if (!hasNatConfig(nat)) return;
   (nat.inside_source || []).forEach((item) => {
     let line = `ip nat inside source list ${required(item.acl, "nat acl")} interface ${required(item.interface, "nat interface")}`;
     if (item.overload !== false) line += " overload";
@@ -1241,15 +1251,68 @@ function validateInventory(inventory) {
   const hostnames = new Set();
 
   (inventory.devices || []).forEach((device, deviceIndex) => {
+    const rawLayer = String(device.device_layer || "L3").toUpperCase();
     const layer = normalizedDeviceLayer(device);
     if (!device.hostname) errors.push(`devices[${deviceIndex}].hostname 必填`);
     if (device.hostname && !HOSTNAME_PATTERN.test(device.hostname)) errors.push(`${device.hostname}: hostname 含中文或非 CLI 安全字元`);
-    if (!DEVICE_LAYERS.has(layer)) errors.push(`${device.hostname}: device_layer 必須是 L2 或 L3`);
+    if (!DEVICE_LAYERS.has(rawLayer)) errors.push(`${device.hostname}: device_layer 必須是 L2 或 L3`);
     validateCliSafe(device.role, `${device.hostname}.role`, errors);
     validateCliSafe(device.platform, `${device.hostname}.platform`, errors);
     validateCliSafe(device.domain_name, `${device.hostname}.domain_name`, errors);
     if (device.hostname && hostnames.has(device.hostname)) errors.push(`hostname 重複: ${device.hostname}`);
     hostnames.add(device.hostname);
+
+    if (hasSpanningTreeConfig(device.spanning_tree)) {
+      if (device.spanning_tree.mode && !STP_MODES.has(device.spanning_tree.mode)) errors.push(`${device.hostname}.spanning_tree.mode 必須是 pvst、rapid-pvst 或 mst`);
+      (device.spanning_tree.vlan_priorities || []).forEach((item, index) => {
+        (item.vlans || []).forEach((vlan, vlanIndex) => validateVlanId(vlan, `${device.hostname}.spanning_tree.vlan_priorities[${index}].vlans[${vlanIndex}]`, errors));
+        const priority = Number(item.priority);
+        if (!Number.isInteger(priority) || priority < 0 || priority > 61440 || priority % 4096 !== 0) {
+          errors.push(`${device.hostname}.spanning_tree.vlan_priorities[${index}].priority 必須是 0-61440 且為 4096 倍數`);
+        }
+      });
+    }
+
+    if (layer === "L2" && hasDhcpConfig(device.dhcp)) errors.push(`${device.hostname}: L2 設備不允許 DHCP Server`);
+    (device.dhcp?.excluded_addresses || []).forEach((item, index) => {
+      const excluded = normalizeExcludedAddress(item);
+      validateIp(excluded.start, `${device.hostname}.dhcp.excluded_addresses[${index}].start`, errors);
+      if (excluded.end) validateIp(excluded.end, `${device.hostname}.dhcp.excluded_addresses[${index}].end`, errors);
+    });
+    (device.dhcp?.pools || []).forEach((pool, index) => {
+      if (!pool.name) errors.push(`${device.hostname}.dhcp.pools[${index}].name 必填`);
+      validateCliSafe(pool.name, `${device.hostname}.dhcp.pools[${index}].name`, errors);
+      validatePrefix(pool.network, `${device.hostname}.dhcp.pools[${index}].network`, errors);
+      if (pool.default_router) validateIp(pool.default_router, `${device.hostname}.dhcp.pools[${index}].default_router`, errors);
+      (pool.dns_servers || []).forEach((server, serverIndex) => validateIp(server, `${device.hostname}.dhcp.pools[${index}].dns_servers[${serverIndex}]`, errors));
+      validateCliSafe(pool.domain_name, `${device.hostname}.dhcp.pools[${index}].domain_name`, errors);
+    });
+
+    (device.acls || []).forEach((acl, aclIndex) => {
+      if (!acl.name) errors.push(`${device.hostname}.acls[${aclIndex}].name 必填`);
+      validateCliSafe(acl.name, `${device.hostname}.acls[${aclIndex}].name`, errors);
+      const aclType = acl.type || "extended";
+      if (!ACL_TYPES.has(aclType)) errors.push(`${device.hostname}.acls[${aclIndex}].type 必須是 standard 或 extended`);
+      (acl.entries || []).forEach((entry, entryIndex) => {
+        if (entry.remark) {
+          validateCliSafe(entry.remark, `${device.hostname}.acls[${aclIndex}].entries[${entryIndex}].remark`, errors);
+          return;
+        }
+        if (entry.action && !ACL_ACTIONS.has(entry.action)) errors.push(`${device.hostname}.acls[${aclIndex}].entries[${entryIndex}].action 必須是 permit 或 deny`);
+        validateCliSafe(entry.protocol, `${device.hostname}.acls[${aclIndex}].entries[${entryIndex}].protocol`, errors);
+        validateAclEndpoint(entry.source || "any", `${device.hostname}.acls[${aclIndex}].entries[${entryIndex}].source`, errors);
+        if (aclType === "extended") validateAclEndpoint(entry.destination || "any", `${device.hostname}.acls[${aclIndex}].entries[${entryIndex}].destination`, errors);
+        validateCliSafe(entry.destination_port, `${device.hostname}.acls[${aclIndex}].entries[${entryIndex}].destination_port`, errors);
+      });
+    });
+
+    if (layer === "L2" && hasNatConfig(device.nat)) errors.push(`${device.hostname}: L2 設備不允許 NAT`);
+    (device.nat?.inside_source || []).forEach((item, index) => {
+      if (!item.acl) errors.push(`${device.hostname}.nat.inside_source[${index}].acl 必填`);
+      validateCliSafe(item.acl, `${device.hostname}.nat.inside_source[${index}].acl`, errors);
+      if (!item.interface) errors.push(`${device.hostname}.nat.inside_source[${index}].interface 必填`);
+      else if (!INTERFACE_NAME_PATTERN.test(item.interface)) errors.push(`${device.hostname}.nat.inside_source[${index}].interface 含非 CLI 安全字元`);
+    });
 
     const vlans = new Set();
     (device.vlans || []).forEach((vlan, vlanIndex) => {
@@ -1270,12 +1333,39 @@ function validateInventory(inventory) {
       if (layer === "L2" && ["routed", "loopback"].includes(iface.mode)) errors.push(`${device.hostname}.${iface.name}: L2 設備不允許 ${iface.mode} 介面`);
       if (iface.address) validatePrefix(iface.address, `${device.hostname}.${iface.name}.address`, errors);
       if (layer === "L2" && iface.nat_role) errors.push(`${device.hostname}.${iface.name}: L2 設備不允許 NAT role`);
+      if (iface.nat_role && !NAT_ROLES.has(iface.nat_role)) errors.push(`${device.hostname}.${iface.name}.nat_role 必須是 inside 或 outside`);
       (iface.helper_addresses || []).forEach((address, helperIndex) => {
         validateIp(address, `${device.hostname}.${iface.name}.helper_addresses[${helperIndex}]`, errors);
+      });
+      (iface.hsrp || []).forEach((group, groupIndex) => {
+        const groupId = Number(group.group);
+        if (!Number.isInteger(groupId) || groupId < 0 || groupId > 255) errors.push(`${device.hostname}.${iface.name}.hsrp[${groupIndex}].group 必須是 0-255`);
+        validateIp(group.virtual_ip, `${device.hostname}.${iface.name}.hsrp[${groupIndex}].virtual_ip`, errors);
+        if (group.priority) {
+          const priority = Number(group.priority);
+          if (!Number.isInteger(priority) || priority < 1 || priority > 255) errors.push(`${device.hostname}.${iface.name}.hsrp[${groupIndex}].priority 必須是 1-255`);
+        }
+      });
+      (iface.access_groups || []).forEach((item, groupIndex) => {
+        if (!item.name) errors.push(`${device.hostname}.${iface.name}.access_groups[${groupIndex}].name 必填`);
+        validateCliSafe(item.name, `${device.hostname}.${iface.name}.access_groups[${groupIndex}].name`, errors);
+        if (!["in", "out"].includes(item.direction)) errors.push(`${device.hostname}.${iface.name}.access_groups[${groupIndex}].direction 必須是 in 或 out`);
       });
       if (iface.channel_group) {
         const channelGroup = Number(iface.channel_group);
         if (!Number.isInteger(channelGroup) || channelGroup < 1) errors.push(`${device.hostname}.${iface.name}.channel_group 必須大於 0`);
+      }
+      if (iface.channel_mode && !CHANNEL_MODES.has(iface.channel_mode)) errors.push(`${device.hostname}.${iface.name}.channel_mode 不支援`);
+      if (iface.access_vlan) validateVlanId(iface.access_vlan, `${device.hostname}.${iface.name}.access_vlan`, errors);
+      if (iface.voice_vlan) validateVlanId(iface.voice_vlan, `${device.hostname}.${iface.name}.voice_vlan`, errors);
+      if (iface.native_vlan) validateVlanId(iface.native_vlan, `${device.hostname}.${iface.name}.native_vlan`, errors);
+      (iface.allowed_vlans || []).forEach((vlan, vlanIndex) => validateVlanId(vlan, `${device.hostname}.${iface.name}.allowed_vlans[${vlanIndex}]`, errors));
+      if (iface.port_security) {
+        if (iface.port_security.maximum) {
+          const maximum = Number(iface.port_security.maximum);
+          if (!Number.isInteger(maximum) || maximum < 1) errors.push(`${device.hostname}.${iface.name}.port_security.maximum 必須大於 0`);
+        }
+        if (iface.port_security.violation && !PORT_SECURITY_VIOLATIONS.has(iface.port_security.violation)) errors.push(`${device.hostname}.${iface.name}.port_security.violation 不支援`);
       }
       if (iface.mode === "access" && !iface.access_vlan) errors.push(`${device.hostname}.${iface.name}.access_vlan 必填`);
     });
@@ -1363,6 +1453,22 @@ function validateIp(value, label, errors) {
   }
 }
 
+function validateAclEndpoint(value, label, errors) {
+  const text = String(value || "any");
+  if (text === "any") return;
+  try {
+    if (text.includes("/")) parseIpv4Prefix(text);
+    else ipToInt(text);
+  } catch {
+    errors.push(`${label} 必須是 any、IPv4 位址或 IPv4 prefix`);
+  }
+}
+
+function validateVlanId(value, label, errors) {
+  const vlanId = Number(value);
+  if (!Number.isInteger(vlanId) || vlanId < 1 || vlanId > 4094) errors.push(`${label} 必須是 1-4094`);
+}
+
 function validateAsn(value, label, errors) {
   const asn = Number(value);
   if (!Number.isInteger(asn) || asn < 1 || asn > 4294967295) errors.push(`${label} 必須是 1-4294967295`);
@@ -1415,6 +1521,43 @@ function safeFilename(value) {
 function normalizedDeviceLayer(device) {
   const layer = String(device.device_layer || "L3").toUpperCase();
   return DEVICE_LAYERS.has(layer) ? layer : "L3";
+}
+
+function hasSpanningTreeConfig(spanningTree) {
+  return !!(
+    spanningTree &&
+    (
+      spanningTree.mode ||
+      spanningTree.portfast_default ||
+      spanningTree.bpduguard_default ||
+      (spanningTree.vlan_priorities || []).length
+    )
+  );
+}
+
+function hasDhcpConfig(dhcp) {
+  return !!(dhcp && ((dhcp.excluded_addresses || []).length || (dhcp.pools || []).length));
+}
+
+function hasNatConfig(nat) {
+  return !!(nat && (nat.inside_source || []).length);
+}
+
+function cleanForExport(value) {
+  if (Array.isArray(value)) {
+    const items = value.map(cleanForExport).filter((item) => item !== undefined);
+    return items.length ? items : undefined;
+  }
+  if (value && typeof value === "object") {
+    const result = {};
+    Object.entries(value).forEach(([key, item]) => {
+      const cleaned = cleanForExport(item);
+      if (cleaned !== undefined) result[key] = cleaned;
+    });
+    return Object.keys(result).length ? result : undefined;
+  }
+  if (value === "") return undefined;
+  return value;
 }
 
 function splitList(value) {
@@ -1483,7 +1626,8 @@ elements.fileInput.addEventListener("change", async () => {
 });
 
 elements.exportBtn.addEventListener("click", () => {
-  download("devices.json", `${JSON.stringify(state, null, 2)}\n`, "application/json");
+  const exported = cleanForExport(state) || { devices: [] };
+  download("devices.json", `${JSON.stringify(exported, null, 2)}\n`, "application/json");
 });
 
 elements.addDeviceBtn.addEventListener("click", () => {

@@ -101,6 +101,41 @@ class GeneratorTest(unittest.TestCase):
         with self.assertRaises(InventoryError):
             validate_inventory(inventory)
 
+    def test_validate_empty_advanced_objects_on_l2(self):
+        inventory = {
+            "devices": [
+                {
+                    "hostname": "SW1",
+                    "device_layer": "L2",
+                    "spanning_tree": {"vlan_priorities": []},
+                    "dhcp": {"excluded_addresses": [], "pools": []},
+                    "nat": {"inside_source": []},
+                    "acls": [],
+                }
+            ]
+        }
+
+        validate_inventory(inventory)
+
+    def test_validate_acl_rejects_ipv6_endpoint(self):
+        inventory = {
+            "devices": [
+                {
+                    "hostname": "R1",
+                    "acls": [
+                        {
+                            "name": "BAD",
+                            "type": "extended",
+                            "entries": [{"action": "permit", "protocol": "ip", "source": "2001:db8::1", "destination": "any"}],
+                        }
+                    ],
+                }
+            ]
+        }
+
+        with self.assertRaises(InventoryError):
+            validate_inventory(inventory)
+
     def test_render_common_routing_and_switching_features(self):
         inventory = {
             "devices": [

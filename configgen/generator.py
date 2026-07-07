@@ -28,6 +28,26 @@ STP_MODES = {"pvst", "rapid-pvst", "mst"}
 PORT_SECURITY_VIOLATIONS = {"protect", "restrict", "shutdown"}
 
 
+def has_spanning_tree_config(spanning_tree: dict[str, Any]) -> bool:
+    return bool(
+        spanning_tree
+        and (
+            spanning_tree.get("mode")
+            or spanning_tree.get("portfast_default")
+            or spanning_tree.get("bpduguard_default")
+            or spanning_tree.get("vlan_priorities")
+        )
+    )
+
+
+def has_dhcp_config(dhcp: dict[str, Any]) -> bool:
+    return bool(dhcp and (dhcp.get("excluded_addresses") or dhcp.get("pools")))
+
+
+def has_nat_config(nat: dict[str, Any]) -> bool:
+    return bool(nat and nat.get("inside_source"))
+
+
 def load_inventory(path: Path) -> dict[str, Any]:
     try:
         with path.open("r", encoding="utf-8") as handle:
@@ -119,7 +139,7 @@ def render_vlans(lines: list[str], vlans: list[dict[str, Any]]) -> None:
 
 
 def render_spanning_tree(lines: list[str], spanning_tree: dict[str, Any]) -> None:
-    if not spanning_tree:
+    if not has_spanning_tree_config(spanning_tree):
         return
     if spanning_tree.get("mode"):
         lines.append(f"spanning-tree mode {spanning_tree['mode']}")
@@ -133,7 +153,7 @@ def render_spanning_tree(lines: list[str], spanning_tree: dict[str, Any]) -> Non
 
 
 def render_dhcp(lines: list[str], dhcp: dict[str, Any]) -> None:
-    if not dhcp:
+    if not has_dhcp_config(dhcp):
         return
     for item in dhcp.get("excluded_addresses", []):
         if isinstance(item, str):
@@ -236,6 +256,8 @@ def render_layer3_address(lines: list[str], interface: dict[str, Any]) -> None:
 
 
 def render_nat(lines: list[str], nat: dict[str, Any]) -> None:
+    if not has_nat_config(nat):
+        return
     for item in nat.get("inside_source", []):
         line = f"ip nat inside source list {item['acl']} interface {item['interface']}"
         if item.get("overload", True):
@@ -396,7 +418,7 @@ def validate_device_metadata(device: dict[str, Any], device_index: int) -> list[
 def validate_spanning_tree(device: dict[str, Any], device_index: int) -> list[str]:
     errors = []
     spanning_tree = device.get("spanning_tree", {})
-    if not spanning_tree:
+    if not has_spanning_tree_config(spanning_tree):
         return errors
     if spanning_tree.get("mode") and spanning_tree["mode"] not in STP_MODES:
         errors.append(f"devices[{device_index}].spanning_tree.mode must be one of {sorted(STP_MODES)}")
@@ -415,7 +437,7 @@ def validate_spanning_tree(device: dict[str, Any], device_index: int) -> list[st
 def validate_dhcp(device: dict[str, Any], device_index: int) -> list[str]:
     errors = []
     dhcp = device.get("dhcp", {})
-    if not dhcp:
+    if not has_dhcp_config(dhcp):
         return errors
     if normalized_device_layer(device) == "L2":
         errors.append(f"devices[{device_index}].dhcp is not allowed on L2 devices")
@@ -569,7 +591,7 @@ def validate_interfaces(device: dict[str, Any], device_index: int) -> list[str]:
 def validate_nat(device: dict[str, Any], device_index: int) -> list[str]:
     errors = []
     nat = device.get("nat", {})
-    if not nat:
+    if not has_nat_config(nat):
         return errors
     if normalized_device_layer(device) == "L2":
         errors.append(f"devices[{device_index}].nat is not allowed on L2 devices")
@@ -593,14 +615,13 @@ def validate_routing(device: dict[str, Any], device_index: int) -> list[str]:
     for index, route in enumerate(routing.get("static", [])):
         try:
             destination = ipaddress.ip_network(route["destination"], strict=False)
-            if device_layer == "L2" and destination.prefixlen != 0:
+            if destination.version != 4:
+                errors.append(f"devices[{device_index}].routing.static[{index}].destination must be a valid IPv4 prefix")
+            elif device_layer == "L2" and destination.prefixlen != 0:
                 errors.append(f"devices[{device_index}].routing.static[{index}] is not allowed on L2 devices except 0.0.0.0/0")
         except (KeyError, ValueError):
-            errors.append(f"devices[{device_index}].routing.static[{index}].destination must be a valid prefix")
-        try:
-            ipaddress.ip_address(route["next_hop"])
-        except (KeyError, ValueError):
-            errors.append(f"devices[{device_index}].routing.static[{index}].next_hop must be a valid IP")
+            errors.append(f"devices[{device_index}].routing.static[{index}].destination must be a valid IPv4 prefix")
+        errors.extend(validate_ip_address(route.get("next_hop"), f"devices[{device_index}].routing.static[{index}].next_hop"))
 
     for protocol in ("ospf", "eigrp", "bgp"):
         if device_layer == "L2" and routing.get(protocol):
@@ -615,15 +636,9 @@ def validate_routing(device: dict[str, Any], device_index: int) -> list[str]:
         except (TypeError, ValueError):
             errors.append(f"devices[{device_index}].routing.ospf.process_id must be an integer")
         if ospf.get("router_id"):
-            try:
-                ipaddress.ip_address(ospf["router_id"])
-            except ValueError:
-                errors.append(f"devices[{device_index}].routing.ospf.router_id must be a valid IP")
+            errors.extend(validate_ip_address(ospf["router_id"], f"devices[{device_index}].routing.ospf.router_id"))
         for index, network in enumerate(ospf.get("networks", [])):
-            try:
-                ipaddress.ip_network(network["prefix"], strict=False)
-            except (KeyError, ValueError):
-                errors.append(f"devices[{device_index}].routing.ospf.networks[{index}].prefix must be a valid prefix")
+            errors.extend(validate_ip_network(network.get("prefix"), f"devices[{device_index}].routing.ospf.networks[{index}].prefix"))
             try:
                 area = int(network.get("area", 0))
                 if area < 0:
@@ -635,15 +650,9 @@ def validate_routing(device: dict[str, Any], device_index: int) -> list[str]:
     if eigrp:
         errors.extend(validate_asn(eigrp.get("asn"), f"devices[{device_index}].routing.eigrp.asn"))
         if eigrp.get("router_id"):
-            try:
-                ipaddress.ip_address(eigrp["router_id"])
-            except ValueError:
-                errors.append(f"devices[{device_index}].routing.eigrp.router_id must be a valid IP")
+            errors.extend(validate_ip_address(eigrp["router_id"], f"devices[{device_index}].routing.eigrp.router_id"))
         for index, network in enumerate(eigrp.get("networks", [])):
-            try:
-                ipaddress.ip_network(network["prefix"], strict=False)
-            except (KeyError, ValueError):
-                errors.append(f"devices[{device_index}].routing.eigrp.networks[{index}].prefix must be a valid prefix")
+            errors.extend(validate_ip_network(network.get("prefix"), f"devices[{device_index}].routing.eigrp.networks[{index}].prefix"))
         for index, interface in enumerate(eigrp.get("passive_interfaces", [])):
             if not INTERFACE_NAME_PATTERN.fullmatch(str(interface)):
                 errors.append(f"devices[{device_index}].routing.eigrp.passive_interfaces[{index}] contains invalid CLI characters")
@@ -652,25 +661,16 @@ def validate_routing(device: dict[str, Any], device_index: int) -> list[str]:
     if bgp:
         errors.extend(validate_asn(bgp.get("asn"), f"devices[{device_index}].routing.bgp.asn"))
         if bgp.get("router_id"):
-            try:
-                ipaddress.ip_address(bgp["router_id"])
-            except ValueError:
-                errors.append(f"devices[{device_index}].routing.bgp.router_id must be a valid IP")
+            errors.extend(validate_ip_address(bgp["router_id"], f"devices[{device_index}].routing.bgp.router_id"))
         for index, neighbor in enumerate(bgp.get("neighbors", [])):
-            try:
-                ipaddress.ip_address(neighbor["address"])
-            except (KeyError, ValueError):
-                errors.append(f"devices[{device_index}].routing.bgp.neighbors[{index}].address must be a valid IP")
+            errors.extend(validate_ip_address(neighbor.get("address"), f"devices[{device_index}].routing.bgp.neighbors[{index}].address"))
             errors.extend(validate_asn(neighbor.get("remote_as"), f"devices[{device_index}].routing.bgp.neighbors[{index}].remote_as"))
             if neighbor.get("description"):
                 errors.extend(validate_cli_safe(str(neighbor["description"]), f"devices[{device_index}].routing.bgp.neighbors[{index}].description"))
             if neighbor.get("update_source") and not INTERFACE_NAME_PATTERN.fullmatch(str(neighbor["update_source"])):
                 errors.append(f"devices[{device_index}].routing.bgp.neighbors[{index}].update_source contains invalid CLI characters")
         for index, network in enumerate(bgp.get("networks", [])):
-            try:
-                ipaddress.ip_network(network["prefix"], strict=False)
-            except (KeyError, ValueError):
-                errors.append(f"devices[{device_index}].routing.bgp.networks[{index}].prefix must be a valid prefix")
+            errors.extend(validate_ip_network(network.get("prefix"), f"devices[{device_index}].routing.bgp.networks[{index}].prefix"))
     return errors
 
 
@@ -697,26 +697,32 @@ def normalized_device_layer(device: dict[str, Any]) -> str:
 
 def validate_ip_interface(value: str, field: str) -> list[str]:
     try:
-        ipaddress.ip_interface(value)
-        return []
+        interface = ipaddress.ip_interface(str(value))
     except ValueError:
-        return [f"{field} must be a valid interface prefix, for example 10.0.0.1/24"]
+        return [f"{field} must be a valid IPv4 interface prefix, for example 10.0.0.1/24"]
+    if interface.version != 4:
+        return [f"{field} must be an IPv4 interface prefix"]
+    return []
 
 
 def validate_ip_address(value: Any, field: str) -> list[str]:
     try:
-        ipaddress.ip_address(str(value))
-        return []
+        address = ipaddress.ip_address(str(value))
     except ValueError:
-        return [f"{field} must be a valid IP"]
+        return [f"{field} must be a valid IPv4 address"]
+    if address.version != 4:
+        return [f"{field} must be an IPv4 address"]
+    return []
 
 
 def validate_ip_network(value: Any, field: str) -> list[str]:
     try:
-        ipaddress.ip_network(str(value), strict=False)
-        return []
+        network = ipaddress.ip_network(str(value), strict=False)
     except ValueError:
-        return [f"{field} must be a valid prefix"]
+        return [f"{field} must be a valid IPv4 prefix"]
+    if network.version != 4:
+        return [f"{field} must be an IPv4 prefix"]
+    return []
 
 
 def validate_acl_endpoint(value: Any, field: str) -> list[str]:
@@ -725,12 +731,14 @@ def validate_acl_endpoint(value: Any, field: str) -> list[str]:
         return []
     try:
         if "/" in text:
-            ipaddress.ip_network(text, strict=False)
+            parsed = ipaddress.ip_network(text, strict=False)
         else:
-            ipaddress.ip_address(text)
-        return []
+            parsed = ipaddress.ip_address(text)
     except ValueError:
-        return [f"{field} must be any, an IP, or a prefix"]
+        return [f"{field} must be any, an IPv4 address, or an IPv4 prefix"]
+    if parsed.version != 4:
+        return [f"{field} must be any, an IPv4 address, or an IPv4 prefix"]
+    return []
 
 
 def validate_vlan_number(value: Any, field: str) -> list[str]:
@@ -796,10 +804,14 @@ def format_acl_endpoint(value: Any) -> str:
         return "any"
     if "/" in text:
         network = ipaddress.ip_network(text, strict=False)
+        if network.version != 4:
+            raise InventoryError("only IPv4 ACL endpoints are supported right now")
         if network.prefixlen == 32:
             return f"host {network.network_address}"
         return f"{network.network_address} {network.hostmask}"
-    ipaddress.ip_address(text)
+    address = ipaddress.ip_address(text)
+    if address.version != 4:
+        raise InventoryError("only IPv4 ACL endpoints are supported right now")
     return f"host {text}"
 
 

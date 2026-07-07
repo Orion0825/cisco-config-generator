@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cisco Config Generator</title>
-    <link rel="stylesheet" href="styles.css?v=20260707-upload-fix">
+    <link rel="stylesheet" href="styles.css?v=20260707-import-config">
   </head>
   <body>
     <div class="app-shell">
@@ -408,7 +408,7 @@
           </div>
           <label id="configDropZone" class="upload-drop-zone" for="configFileInput">
             <strong>上傳或拖放 CFG/TXT</strong>
-            <small>支援 .cfg / .txt，多檔會加入右側輸出清單</small>
+            <small>支援 .cfg / .txt，會同步左側設備與右側輸出</small>
           </label>
           <textarea id="configOutput" spellcheck="false" readonly aria-label="Cisco CLI 可複製貼上設定"></textarea>
           <div class="output-actions">
@@ -421,6 +421,6 @@
       </main>
     </div>
 
-    <script src="app.js?v=20260707-upload-fix"></script>
+    <script src="app.js?v=20260707-import-config"></script>
   </body>
 </html>

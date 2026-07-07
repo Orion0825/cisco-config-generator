@@ -1978,6 +1978,673 @@ function normalizeConfigText(value) {
   return String(value || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
+function parseCiscoConfigToDevice(content, fallbackFilename) {
+  const lines = normalizeConfigText(content).split("\n");
+  const fallbackHostname = safeFilename(String(fallbackFilename || "UPLOADED-DEVICE").replace(/\.(cfg|txt)$/i, "")).toUpperCase();
+  const device = {
+    hostname: fallbackHostname || `UPLOADED-${state.devices.length + 1}`,
+    role: "uploaded-config",
+    device_layer: "L3",
+    platform: "ios",
+    vlans: [],
+    interfaces: [],
+    routing: { static: [] },
+  };
+  const stateFlags = { hasL3: false, hasSwitching: false };
+
+  const readIndentedBlock = (startIndex) => {
+    const block = [];
+    let index = startIndex + 1;
+    while (index < lines.length) {
+      const raw = lines[index];
+      const line = raw.trim();
+      if (!line || line === "!") {
+        index += 1;
+        continue;
+      }
+      if (/^\S/.test(raw)) break;
+      block.push(line);
+      index += 1;
+    }
+    return { block, nextIndex: index - 1 };
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const raw = lines[index];
+    const line = raw.trim();
+    if (!line || line === "!" || line.startsWith("!")) continue;
+
+    let match = line.match(/^hostname\s+(\S+)/i);
+    if (match) {
+      device.hostname = safeFilename(match[1]);
+      continue;
+    }
+
+    match = line.match(/^ip domain-name\s+(.+)/i);
+    if (match) {
+      device.domain_name = match[1].trim();
+      continue;
+    }
+
+    match = line.match(/^ip name-server\s+(.+)/i);
+    if (match) {
+      device.name_servers ||= [];
+      device.name_servers.push(...splitWhitespace(match[1]));
+      continue;
+    }
+
+    match = line.match(/^ntp server\s+(\S+)/i);
+    if (match) {
+      device.ntp_servers ||= [];
+      device.ntp_servers.push(match[1]);
+      continue;
+    }
+
+    match = line.match(/^ip vrf\s+(\S+)/i);
+    if (match) {
+      const { block, nextIndex } = readIndentedBlock(index);
+      device.vrfs ||= [];
+      const vrf = { name: match[1] };
+      block.forEach((item) => {
+        const rd = item.match(/^rd\s+(\S+)/i);
+        const importTarget = item.match(/^route-target\s+import\s+(\S+)/i);
+        const exportTarget = item.match(/^route-target\s+export\s+(\S+)/i);
+        if (rd) vrf.rd = rd[1];
+        if (importTarget) {
+          vrf.route_targets_import ||= [];
+          vrf.route_targets_import.push(importTarget[1]);
+        }
+        if (exportTarget) {
+          vrf.route_targets_export ||= [];
+          vrf.route_targets_export.push(exportTarget[1]);
+        }
+      });
+      device.vrfs.push(vrf);
+      stateFlags.hasL3 = true;
+      index = nextIndex;
+      continue;
+    }
+
+    match = line.match(/^vlan\s+(\d+)/i);
+    if (match) {
+      const { block, nextIndex } = readIndentedBlock(index);
+      const vlan = { id: Number(match[1]) };
+      const name = block.find((item) => /^name\s+/i.test(item));
+      if (name) vlan.name = name.replace(/^name\s+/i, "").trim();
+      device.vlans.push(vlan);
+      stateFlags.hasSwitching = true;
+      index = nextIndex;
+      continue;
+    }
+
+    match = line.match(/^interface\s+(.+)/i);
+    if (match) {
+      const { block, nextIndex } = readIndentedBlock(index);
+      device.interfaces.push(parseInterfaceBlock(match[1].trim(), block, stateFlags));
+      index = nextIndex;
+      continue;
+    }
+
+    match = line.match(/^ip default-gateway\s+(\S+)/i);
+    if (match) {
+      device.routing.static.push({ destination: "0.0.0.0/0", next_hop: match[1] });
+      stateFlags.hasSwitching = true;
+      continue;
+    }
+
+    match = line.match(/^ip route(?:\s+vrf\s+(\S+))?\s+(\S+)\s+(\S+)\s+(.+)/i);
+    if (match) {
+      const nextHop = splitWhitespace(match[4]).find((token) => isIpv4Address(token));
+      if (!nextHop) continue;
+      const route = {
+        destination: ipv4WithMaskToPrefix(match[2], match[3]),
+        next_hop: nextHop,
+      };
+      if (match[1]) route.vrf = match[1];
+      device.routing.static.push(route);
+      stateFlags.hasL3 = true;
+      continue;
+    }
+
+    match = line.match(/^spanning-tree\s+mode\s+(\S+)/i);
+    if (match) {
+      device.spanning_tree ||= {};
+      device.spanning_tree.mode = match[1].toLowerCase();
+      stateFlags.hasSwitching = true;
+      continue;
+    }
+
+    if (/^spanning-tree\s+portfast\s+default/i.test(line)) {
+      device.spanning_tree ||= {};
+      device.spanning_tree.portfast_default = true;
+      continue;
+    }
+
+    if (/^spanning-tree\s+portfast\s+bpduguard\s+default/i.test(line)) {
+      device.spanning_tree ||= {};
+      device.spanning_tree.bpduguard_default = true;
+      continue;
+    }
+
+    match = line.match(/^spanning-tree\s+vlan\s+(.+?)\s+priority\s+(\d+)/i);
+    if (match) {
+      device.spanning_tree ||= {};
+      device.spanning_tree.vlan_priorities ||= [];
+      device.spanning_tree.vlan_priorities.push({ vlans: parseVlanList(match[1]), priority: Number(match[2]) });
+      continue;
+    }
+
+    match = line.match(/^ip dhcp excluded-address\s+(\S+)(?:\s+(\S+))?/i);
+    if (match) {
+      device.dhcp ||= {};
+      device.dhcp.excluded_addresses ||= [];
+      device.dhcp.excluded_addresses.push({ start: match[1], end: match[2] || "" });
+      stateFlags.hasL3 = true;
+      continue;
+    }
+
+    match = line.match(/^ip dhcp pool\s+(\S+)/i);
+    if (match) {
+      const { block, nextIndex } = readIndentedBlock(index);
+      device.dhcp ||= {};
+      device.dhcp.pools ||= [];
+      device.dhcp.pools.push(parseDhcpPoolBlock(match[1], block));
+      stateFlags.hasL3 = true;
+      index = nextIndex;
+      continue;
+    }
+
+    match = line.match(/^ip access-list\s+(standard|extended)\s+(\S+)/i);
+    if (match) {
+      const { block, nextIndex } = readIndentedBlock(index);
+      device.acls ||= [];
+      device.acls.push(parseAclBlock(match[1], match[2], block));
+      index = nextIndex;
+      continue;
+    }
+
+    match = line.match(/^ip nat inside source list\s+(\S+)\s+interface\s+(\S+)(?:\s+overload)?/i);
+    if (match) {
+      device.nat ||= {};
+      device.nat.inside_source ||= [];
+      device.nat.inside_source.push({ acl: match[1], interface: match[2], overload: /\boverload\b/i.test(line) });
+      stateFlags.hasL3 = true;
+      continue;
+    }
+
+    match = line.match(/^ip prefix-list\s+(\S+)(?:\s+seq\s+(\d+))?\s+(permit|deny)\s+(\S+)(?:\s+ge\s+(\d+))?(?:\s+le\s+(\d+))?/i);
+    if (match) {
+      device.prefix_lists ||= [];
+      const item = { name: match[1], action: match[3].toLowerCase(), prefix: match[4] };
+      if (match[2]) item.sequence = Number(match[2]);
+      if (match[5]) item.ge = Number(match[5]);
+      if (match[6]) item.le = Number(match[6]);
+      device.prefix_lists.push(item);
+      stateFlags.hasL3 = true;
+      continue;
+    }
+
+    match = line.match(/^route-map\s+(\S+)\s+(permit|deny)\s+(\d+)/i);
+    if (match) {
+      const { block, nextIndex } = readIndentedBlock(index);
+      device.route_maps ||= [];
+      device.route_maps.push(parseRouteMapBlock(match[1], match[2].toLowerCase(), Number(match[3]), block));
+      stateFlags.hasL3 = true;
+      index = nextIndex;
+      continue;
+    }
+
+    match = line.match(/^router\s+ospf\s+(\d+)/i);
+    if (match) {
+      const { block, nextIndex } = readIndentedBlock(index);
+      device.routing.ospf = parseOspfBlock(Number(match[1]), block);
+      stateFlags.hasL3 = true;
+      index = nextIndex;
+      continue;
+    }
+
+    match = line.match(/^router\s+eigrp\s+(\d+)/i);
+    if (match) {
+      const { block, nextIndex } = readIndentedBlock(index);
+      device.routing.eigrp = parseEigrpBlock(Number(match[1]), block);
+      stateFlags.hasL3 = true;
+      index = nextIndex;
+      continue;
+    }
+
+    match = line.match(/^router\s+bgp\s+(\d+)/i);
+    if (match) {
+      const { block, nextIndex } = readIndentedBlock(index);
+      device.routing.bgp = parseBgpBlock(Number(match[1]), block);
+      stateFlags.hasL3 = true;
+      index = nextIndex;
+      continue;
+    }
+  }
+
+  dedupeParsedDevice(device);
+  device.device_layer = inferParsedLayer(device, stateFlags);
+  return cleanForExport(device) || device;
+}
+
+function parseInterfaceBlock(name, block, stateFlags) {
+  const iface = { name, mode: inferInterfaceModeFromName(name) };
+  block.forEach((line) => {
+    let match = line.match(/^description\s+(.+)/i);
+    if (match) {
+      iface.description = match[1].trim();
+      return;
+    }
+
+    match = line.match(/^vrf forwarding\s+(\S+)/i);
+    if (match) {
+      iface.vrf = match[1];
+      stateFlags.hasL3 = true;
+      return;
+    }
+
+    match = line.match(/^ip address\s+(\S+)\s+(\S+)/i);
+    if (match && match[1].toLowerCase() !== "dhcp") {
+      iface.address = ipv4WithMaskToPrefix(match[1], match[2]);
+      if (iface.mode === "access" || iface.mode === "trunk") iface.mode = "routed";
+      stateFlags.hasL3 = true;
+      return;
+    }
+
+    if (/^switchport\s+mode\s+access/i.test(line)) {
+      iface.mode = "access";
+      stateFlags.hasSwitching = true;
+      return;
+    }
+
+    if (/^switchport\s+mode\s+trunk/i.test(line)) {
+      iface.mode = "trunk";
+      stateFlags.hasSwitching = true;
+      return;
+    }
+
+    if (/^no switchport/i.test(line)) {
+      iface.mode = "routed";
+      stateFlags.hasL3 = true;
+      return;
+    }
+
+    match = line.match(/^switchport access vlan\s+(\d+)/i);
+    if (match) {
+      iface.access_vlan = Number(match[1]);
+      iface.mode = "access";
+      stateFlags.hasSwitching = true;
+      return;
+    }
+
+    match = line.match(/^switchport voice vlan\s+(\d+)/i);
+    if (match) {
+      iface.voice_vlan = Number(match[1]);
+      return;
+    }
+
+    match = line.match(/^switchport trunk native vlan\s+(\d+)/i);
+    if (match) {
+      iface.native_vlan = Number(match[1]);
+      iface.mode = "trunk";
+      return;
+    }
+
+    match = line.match(/^switchport trunk allowed vlan\s+(.+)/i);
+    if (match) {
+      iface.allowed_vlans = parseVlanList(match[1]);
+      iface.mode = "trunk";
+      return;
+    }
+
+    match = line.match(/^channel-group\s+(\d+)(?:\s+mode\s+(\S+))?/i);
+    if (match) {
+      iface.channel_group = Number(match[1]);
+      iface.channel_mode = match[2]?.toLowerCase() || "active";
+      return;
+    }
+
+    match = line.match(/^ip helper-address\s+(\S+)/i);
+    if (match) {
+      iface.helper_addresses ||= [];
+      iface.helper_addresses.push(match[1]);
+      return;
+    }
+
+    match = line.match(/^standby\s+(\d+)\s+ip\s+(\S+)/i);
+    if (match) {
+      iface.hsrp ||= [{}];
+      iface.hsrp[0].group = Number(match[1]);
+      iface.hsrp[0].virtual_ip = match[2];
+      return;
+    }
+
+    match = line.match(/^standby\s+(\d+)\s+priority\s+(\d+)/i);
+    if (match) {
+      iface.hsrp ||= [{ group: Number(match[1]) }];
+      iface.hsrp[0].priority = Number(match[2]);
+      return;
+    }
+
+    match = line.match(/^standby\s+(\d+)\s+preempt/i);
+    if (match) {
+      iface.hsrp ||= [{ group: Number(match[1]) }];
+      iface.hsrp[0].preempt = true;
+      return;
+    }
+
+    match = line.match(/^ip access-group\s+(\S+)\s+(in|out)/i);
+    if (match) {
+      iface.access_groups ||= [];
+      iface.access_groups.push({ name: match[1], direction: match[2].toLowerCase() });
+      return;
+    }
+
+    match = line.match(/^ip nat\s+(inside|outside)/i);
+    if (match) {
+      iface.nat_role = match[1].toLowerCase();
+      stateFlags.hasL3 = true;
+      return;
+    }
+
+    if (/^spanning-tree portfast/i.test(line)) iface.spanning_tree_portfast = true;
+    if (/^spanning-tree bpduguard enable/i.test(line)) iface.spanning_tree_bpduguard = true;
+    if (/^shutdown/i.test(line)) iface.shutdown = true;
+    if (/^no shutdown/i.test(line)) iface.shutdown = false;
+    if (/^switchport port-security$/i.test(line)) iface.port_security ||= {};
+
+    match = line.match(/^switchport port-security maximum\s+(\d+)/i);
+    if (match) {
+      iface.port_security ||= {};
+      iface.port_security.maximum = Number(match[1]);
+      return;
+    }
+
+    match = line.match(/^switchport port-security violation\s+(\S+)/i);
+    if (match) {
+      iface.port_security ||= {};
+      iface.port_security.violation = match[1].toLowerCase();
+      return;
+    }
+
+    if (/^switchport port-security mac-address sticky/i.test(line)) {
+      iface.port_security ||= {};
+      iface.port_security.sticky = true;
+    }
+  });
+  return iface;
+}
+
+function parseDhcpPoolBlock(name, block) {
+  const pool = { name };
+  block.forEach((line) => {
+    let match = line.match(/^network\s+(\S+)\s+(\S+)/i);
+    if (match) pool.network = ipv4WithMaskToPrefix(match[1], match[2]);
+    match = line.match(/^default-router\s+(.+)/i);
+    if (match) pool.default_router = splitWhitespace(match[1])[0];
+    match = line.match(/^dns-server\s+(.+)/i);
+    if (match) pool.dns_servers = splitWhitespace(match[1]);
+    match = line.match(/^domain-name\s+(.+)/i);
+    if (match) pool.domain_name = match[1].trim();
+  });
+  return pool;
+}
+
+function parseAclBlock(type, name, block) {
+  return {
+    name,
+    type: type.toLowerCase(),
+    entries: block.map((line) => parseAclLine(line, type.toLowerCase())).filter(Boolean),
+  };
+}
+
+function parseAclLine(line, aclType) {
+  if (!line || line === "!") return null;
+  if (/^remark\s+/i.test(line)) return { remark: line.replace(/^remark\s+/i, "").trim() };
+  const tokens = splitWhitespace(line);
+  if (/^\d+$/.test(tokens[0])) tokens.shift();
+  const action = (tokens.shift() || "").toLowerCase();
+  if (!ACL_ACTIONS.has(action)) return { remark: line };
+  if (aclType === "standard") {
+    return { action, source: consumeAclEndpoint(tokens) || "any" };
+  }
+  const protocol = tokens.shift() || "ip";
+  const source = consumeAclEndpoint(tokens) || "any";
+  const destination = consumeAclEndpoint(tokens) || "any";
+  const entry = { action, protocol, source, destination };
+  const eqIndex = tokens.findIndex((token) => token.toLowerCase() === "eq");
+  if (eqIndex >= 0 && tokens[eqIndex + 1]) entry.destination_port = tokens[eqIndex + 1];
+  if (tokens.some((token) => token.toLowerCase() === "log")) entry.log = true;
+  return entry;
+}
+
+function consumeAclEndpoint(tokens) {
+  const first = tokens.shift();
+  if (!first) return "";
+  if (first.toLowerCase() === "any") return "any";
+  if (first.toLowerCase() === "host") return tokens.shift() || "";
+  if (isIpv4Address(first) && tokens[0] && isIpv4Address(tokens[0])) {
+    const wildcard = tokens.shift();
+    return wildcardToPrefix(first, wildcard);
+  }
+  return first;
+}
+
+function parseRouteMapBlock(name, action, sequence, block) {
+  const routeMap = { name, action, sequence };
+  block.forEach((line) => {
+    let match = line.match(/^match ip address prefix-list\s+(.+)/i);
+    if (match) routeMap.match_prefix_lists = splitWhitespace(match[1]);
+    match = line.match(/^set local-preference\s+(\d+)/i);
+    if (match) routeMap.set_local_preference = Number(match[1]);
+    match = line.match(/^set metric\s+(.+)/i);
+    if (match) routeMap.set_metric = match[1].trim();
+    match = line.match(/^set as-path prepend\s+(.+)/i);
+    if (match) routeMap.set_as_path_prepend = match[1].trim();
+  });
+  return routeMap;
+}
+
+function parseOspfBlock(processId, block) {
+  const ospf = { process_id: processId, networks: [] };
+  block.forEach((line) => {
+    let match = line.match(/^router-id\s+(\S+)/i);
+    if (match) ospf.router_id = match[1];
+    match = line.match(/^network\s+(\S+)\s+(\S+)\s+area\s+(\S+)/i);
+    if (match) ospf.networks.push({ prefix: wildcardToPrefix(match[1], match[2]), area: Number(match[3]) || 0 });
+    const redistribute = parseRedistributeLine(line, true);
+    if (redistribute) {
+      ospf.redistribute ||= [];
+      ospf.redistribute.push(redistribute);
+    }
+  });
+  return ospf;
+}
+
+function parseEigrpBlock(asn, block) {
+  const eigrp = { asn, networks: [], passive_interfaces: [], no_auto_summary: true };
+  block.forEach((line) => {
+    let match = line.match(/^eigrp router-id\s+(\S+)/i);
+    if (match) eigrp.router_id = match[1];
+    match = line.match(/^network\s+(\S+)(?:\s+(\S+))?/i);
+    if (match) eigrp.networks.push({ prefix: match[2] ? wildcardToPrefix(match[1], match[2]) : `${match[1]}/32` });
+    match = line.match(/^passive-interface\s+(.+)/i);
+    if (match) eigrp.passive_interfaces.push(match[1].trim());
+    if (/^no auto-summary/i.test(line)) eigrp.no_auto_summary = true;
+    const redistribute = parseRedistributeLine(line);
+    if (redistribute) {
+      eigrp.redistribute ||= [];
+      eigrp.redistribute.push(redistribute);
+    }
+  });
+  return eigrp;
+}
+
+function parseBgpBlock(asn, block) {
+  const bgp = { asn, neighbors: [], networks: [] };
+  block.forEach((line) => {
+    let match = line.match(/^bgp router-id\s+(\S+)/i);
+    if (match) bgp.router_id = match[1];
+
+    match = line.match(/^neighbor\s+(\S+)\s+remote-as\s+(\d+)/i);
+    if (match) {
+      const neighbor = bgpNeighbor(bgp, match[1]);
+      neighbor.remote_as = Number(match[2]);
+      return;
+    }
+
+    match = line.match(/^neighbor\s+(\S+)\s+description\s+(.+)/i);
+    if (match) bgpNeighbor(bgp, match[1]).description = match[2].trim();
+    match = line.match(/^neighbor\s+(\S+)\s+update-source\s+(\S+)/i);
+    if (match) bgpNeighbor(bgp, match[1]).update_source = match[2];
+    match = line.match(/^neighbor\s+(\S+)\s+next-hop-self/i);
+    if (match) bgpNeighbor(bgp, match[1]).next_hop_self = true;
+    match = line.match(/^neighbor\s+(\S+)\s+send-community(?:\s+(\S+))?/i);
+    if (match) bgpNeighbor(bgp, match[1]).send_community = match[2] || "both";
+    match = line.match(/^neighbor\s+(\S+)\s+soft-reconfiguration inbound/i);
+    if (match) bgpNeighbor(bgp, match[1]).soft_reconfiguration = true;
+    match = line.match(/^neighbor\s+(\S+)\s+route-map\s+(\S+)\s+(in|out)/i);
+    if (match) bgpNeighbor(bgp, match[1])[match[3].toLowerCase() === "in" ? "route_map_in" : "route_map_out"] = match[2];
+    match = line.match(/^neighbor\s+(\S+)\s+prefix-list\s+(\S+)\s+(in|out)/i);
+    if (match) bgpNeighbor(bgp, match[1])[match[3].toLowerCase() === "in" ? "prefix_list_in" : "prefix_list_out"] = match[2];
+
+    match = line.match(/^network\s+(\S+)(?:\s+mask\s+(\S+))?/i);
+    if (match) bgp.networks.push({ prefix: match[2] ? ipv4WithMaskToPrefix(match[1], match[2]) : match[1] });
+
+    const redistribute = parseRedistributeLine(line);
+    if (redistribute) {
+      bgp.redistribute ||= [];
+      bgp.redistribute.push(redistribute);
+    }
+  });
+  bgp.neighbors = bgp.neighbors.filter((neighbor) => neighbor.remote_as);
+  return bgp;
+}
+
+function parseRedistributeLine(line, defaultSubnets = false) {
+  const match = line.match(/^redistribute\s+(\S+)(.*)/i);
+  if (!match) return null;
+  const item = { source: match[1] };
+  const rest = match[2] || "";
+  const routeMap = rest.match(/\broute-map\s+(\S+)/i);
+  const metric = rest.match(/\bmetric\s+(.+?)(?:\s+subnets|\s+route-map|$)/i);
+  if (routeMap) item.route_map = routeMap[1];
+  if (metric) item.metric = metric[1].trim();
+  if (defaultSubnets || /\bsubnets\b/i.test(rest)) item.subnets = true;
+  return item;
+}
+
+function bgpNeighbor(bgp, address) {
+  let neighbor = bgp.neighbors.find((item) => item.address === address);
+  if (!neighbor) {
+    neighbor = { address };
+    bgp.neighbors.push(neighbor);
+  }
+  return neighbor;
+}
+
+function inferInterfaceModeFromName(name) {
+  if (/^vlan\d+/i.test(name)) return "svi";
+  if (/^loopback/i.test(name)) return "loopback";
+  return "routed";
+}
+
+function inferParsedLayer(device, flags) {
+  if (flags.hasL3) return "L3";
+  if ((device.routing?.static || []).some((route) => route.destination !== "0.0.0.0/0")) return "L3";
+  if ((device.interfaces || []).some((iface) => ["routed", "loopback"].includes(iface.mode))) return "L3";
+  return flags.hasSwitching ? "L2" : "L3";
+}
+
+function dedupeParsedDevice(device) {
+  device.vlans = uniqueBy(device.vlans || [], (item) => String(item.id));
+  device.interfaces = uniqueBy(device.interfaces || [], (item) => item.name);
+  device.vrfs = uniqueBy(device.vrfs || [], (item) => item.name);
+  device.prefix_lists = uniqueBy(device.prefix_lists || [], (item) => `${item.name}:${item.sequence || ""}:${item.prefix}`);
+  device.route_maps = uniqueBy(device.route_maps || [], (item) => `${item.name}:${item.sequence || 10}`);
+  if (device.name_servers) device.name_servers = [...new Set(device.name_servers)];
+  if (device.ntp_servers) device.ntp_servers = [...new Set(device.ntp_servers)];
+  ensureReferencedVrfs(device);
+}
+
+function ensureReferencedVrfs(device) {
+  const vrfs = new Set((device.vrfs || []).map((vrf) => vrf.name));
+  const addVrf = (name) => {
+    if (!name || vrfs.has(name)) return;
+    device.vrfs ||= [];
+    device.vrfs.push({ name });
+    vrfs.add(name);
+  };
+  (device.interfaces || []).forEach((iface) => addVrf(iface.vrf));
+  (device.routing?.static || []).forEach((route) => addVrf(route.vrf));
+}
+
+function upsertParsedDevice(device) {
+  const hostname = device.hostname || `UPLOADED-${state.devices.length + 1}`;
+  const existingIndex = state.devices.findIndex((item) => item.hostname === hostname);
+  if (existingIndex >= 0) {
+    state.devices[existingIndex] = normalizeInventory({ defaults: {}, devices: [device] }).devices[0];
+    return existingIndex;
+  }
+  state.devices.push(normalizeInventory({ defaults: {}, devices: [device] }).devices[0]);
+  return state.devices.length - 1;
+}
+
+function uniqueBy(items, getKey) {
+  const seen = new Set();
+  return items.filter((item) => {
+    const key = getKey(item);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function splitWhitespace(value) {
+  return String(value || "").trim().split(/\s+/).filter(Boolean);
+}
+
+function isIpv4Address(value) {
+  try {
+    ipToInt(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function parseVlanList(value) {
+  const vlans = [];
+  String(value || "").replace(/\b(add|remove|except|all)\b/gi, "").split(",").forEach((part) => {
+    const text = part.trim();
+    if (!text) return;
+    const range = text.match(/^(\d+)-(\d+)$/);
+    if (range) {
+      const start = Number(range[1]);
+      const end = Number(range[2]);
+      for (let vlan = start; vlan <= end && vlan <= start + 64; vlan += 1) vlans.push(vlan);
+    } else if (/^\d+$/.test(text)) {
+      vlans.push(Number(text));
+    }
+  });
+  return [...new Set(vlans)].filter((vlan) => vlan >= 1 && vlan <= 4094);
+}
+
+function ipv4WithMaskToPrefix(address, mask) {
+  return `${address}/${netmaskToPrefixLength(mask)}`;
+}
+
+function wildcardToPrefix(address, wildcard) {
+  const mask = intToIp((~ipToInt(wildcard)) >>> 0);
+  return ipv4WithMaskToPrefix(address, mask);
+}
+
+function netmaskToPrefixLength(mask) {
+  const binary = ipToInt(mask).toString(2).padStart(32, "0");
+  const firstZero = binary.indexOf("0");
+  return firstZero === -1 ? 32 : firstZero;
+}
+
 async function handleConfigFiles(fileList) {
   const files = Array.from(fileList || []);
   if (!files.length) {
@@ -1988,7 +2655,9 @@ async function handleConfigFiles(fileList) {
   const generatedConfigs = renderInventory(state).configs;
   const existingNames = new Set([...Object.keys(generatedConfigs), ...Object.keys(uploadedConfigs)]);
   const accepted = [];
+  const importedDevices = [];
   const skipped = [];
+  let lastImportedDeviceIndex = selectedDeviceIndex;
 
   for (const file of files) {
     const filename = safeUploadFilename(file.name);
@@ -2008,20 +2677,32 @@ async function handleConfigFiles(fileList) {
       existingNames.add(uniqueName);
       uploadedConfigs[uniqueName] = content.endsWith("\n") ? content : `${content}\n`;
       accepted.push(uniqueName);
+
+      const parsedDevice = parseCiscoConfigToDevice(content, uniqueName);
+      lastImportedDeviceIndex = upsertParsedDevice(parsedDevice);
+      importedDevices.push(parsedDevice.hostname);
     } catch (error) {
-      skipped.push(`${filename}: 讀取失敗 ${error.message}`);
+      skipped.push(`${filename}: 處理失敗 ${error.message}`);
     }
   }
 
   uploadWarnings = [
     ...accepted.map((filename) => `${filename}: 已上傳到輸出區`),
+    ...importedDevices.map((hostname) => `${hostname}: 已同步到左側設備與設定區`),
     ...skipped,
   ];
   if (accepted.length) selectedOutputFile = accepted[accepted.length - 1];
-  renderOutput();
+  if (importedDevices.length) {
+    selectedDeviceIndex = lastImportedDeviceIndex;
+    activeTab = "device";
+  }
+  render();
   if (accepted.length) {
-    focusOutputPanel();
     elements.statusText.textContent = `已上傳 ${accepted.length} 份 CFG/TXT`;
+    if (importedDevices.length) {
+      elements.statusText.textContent += `，已更新 ${importedDevices.length} 台設備`;
+      flashElement(elements.editorPanel);
+    }
   } else {
     elements.statusText.textContent = "沒有可上傳的 CFG/TXT 檔案";
   }

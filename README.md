@@ -71,6 +71,14 @@ python -m configgen
 python -m configgen --check
 ```
 
+也可以透過 GitHub Pages 直接開啟：
+
+```text
+https://orion0825.github.io/cisco-config-generator/
+```
+
+若第一次打不開，請到 GitHub repo 的 `Settings` -> `Pages`，確認 Source 設成 `GitHub Actions`，然後到 `Actions` 手動執行 `Deploy Web GUI`。
+
 ## GitHub / VS Code 流程
 
 已經建立 GitHub repo 後，日常流程建議如下：

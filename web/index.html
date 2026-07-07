@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cisco Config Generator</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>Cisco Config Generator</h1>
+          <p id="statusText">尚未產生設定檔</p>
+        </div>
+        <div class="toolbar">
+          <input id="fileInput" type="file" accept="application/json,.json" hidden>
+          <button id="importBtn" type="button">匯入 JSON</button>
+          <button id="exportBtn" type="button">匯出 JSON</button>
+          <button id="addDeviceBtn" type="button">新增設備</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="device-panel" aria-label="設備清單">
+          <div class="panel-title">
+            <span>設備</span>
+            <strong id="deviceCount">0</strong>
+          </div>
+          <div id="deviceList" class="device-list"></div>
+          <div class="side-actions">
+            <button id="duplicateDeviceBtn" type="button">複製設備</button>
+            <button id="deleteDeviceBtn" type="button" class="danger">刪除設備</button>
+          </div>
+        </aside>
+
+        <section class="editor-panel" aria-label="設定編輯區">
+          <div class="tabs" role="tablist" aria-label="編輯模式">
+            <button id="deviceTab" type="button" class="tab active">設備</button>
+            <button id="defaultsTab" type="button" class="tab">預設值</button>
+          </div>
+
+          <form id="deviceForm" class="form-stack">
+            <section class="section-block">
+              <h2>基本資料</h2>
+              <div class="field-grid">
+                <label>
+                  Hostname
+                  <input name="hostname" autocomplete="off">
+                </label>
+                <label>
+                  Role
+                  <input name="role" autocomplete="off">
+                </label>
+                <label>
+                  Platform
+                  <select name="platform">
+                    <option value="ios">ios</option>
+                    <option value="ios-xe">ios-xe</option>
+                    <option value="nx-os">nx-os</option>
+                  </select>
+                </label>
+                <label>
+                  Domain
+                  <input name="domain_name" autocomplete="off" placeholder="沿用預設值">
+                </label>
+              </div>
+            </section>
+
+            <section class="section-block">
+              <div class="section-heading">
+                <h2>VLAN</h2>
+                <button id="addVlanBtn" type="button">新增 VLAN</button>
+              </div>
+              <div id="vlanRows" class="rows"></div>
+            </section>
+
+            <section class="section-block">
+              <div class="section-heading">
+                <h2>Interface</h2>
+                <button id="addInterfaceBtn" type="button">新增介面</button>
+              </div>
+              <div id="interfaceRows" class="rows"></div>
+            </section>
+
+            <section class="section-block">
+              <div class="section-heading">
+                <h2>Static Route</h2>
+                <button id="addStaticRouteBtn" type="button">新增路由</button>
+              </div>
+              <div id="staticRouteRows" class="rows"></div>
+            </section>
+
+            <section class="section-block">
+              <div class="section-heading">
+                <h2>OSPF</h2>
+                <label class="switch">
+                  <input id="ospfEnabled" type="checkbox">
+                  <span>啟用</span>
+                </label>
+              </div>
+              <div id="ospfFields" class="ospf-fields">
+                <div class="field-grid">
+                  <label>
+                    Process ID
+                    <input id="ospfProcessId" type="number" min="1" value="1">
+                  </label>
+                  <label>
+                    Router ID
+                    <input id="ospfRouterId" autocomplete="off">
+                  </label>
+                </div>
+                <div class="section-heading compact">
+                  <h3>Network</h3>
+                  <button id="addOspfNetworkBtn" type="button">新增 Network</button>
+                </div>
+                <div id="ospfNetworkRows" class="rows"></div>
+              </div>
+            </section>
+          </form>
+
+          <form id="defaultsForm" class="form-stack hidden">
+            <section class="section-block">
+              <h2>全域預設值</h2>
+              <div class="field-grid">
+                <label>
+                  Domain
+                  <input name="domain_name" autocomplete="off">
+                </label>
+                <label>
+                  DNS
+                  <input name="name_servers" autocomplete="off">
+                </label>
+                <label>
+                  NTP
+                  <input name="ntp_servers" autocomplete="off">
+                </label>
+                <label>
+                  VTY Transport
+                  <select name="vty_transport">
+                    <option value="ssh">ssh</option>
+                    <option value="telnet">telnet</option>
+                    <option value="all">all</option>
+                    <option value="none">none</option>
+                  </select>
+                </label>
+              </div>
+            </section>
+
+            <section class="section-block">
+              <h2>SSH 與本地帳號</h2>
+              <div class="field-grid">
+                <label class="switch field-switch">
+                  <input name="ssh_enabled" type="checkbox">
+                  <span>SSH</span>
+                </label>
+                <label>
+                  RSA Modulus
+                  <input name="ssh_modulus" type="number" min="1024" step="512">
+                </label>
+                <label>
+                  Username
+                  <input name="local_user_name" autocomplete="off">
+                </label>
+                <label>
+                  Privilege
+                  <input name="local_user_privilege" type="number" min="0" max="15">
+                </label>
+                <label>
+                  Secret Type
+                  <input name="local_user_secret_type" autocomplete="off">
+                </label>
+                <label>
+                  Secret
+                  <input name="local_user_secret" autocomplete="off">
+                </label>
+              </div>
+            </section>
+          </form>
+        </section>
+
+        <aside class="output-panel" aria-label="產生結果">
+          <div class="panel-title">
+            <span>輸出</span>
+            <strong id="outputCount">0</strong>
+          </div>
+          <select id="outputSelect" aria-label="選擇輸出檔案"></select>
+          <textarea id="configOutput" spellcheck="false"></textarea>
+          <div class="output-actions">
+            <button id="copyConfigBtn" type="button">複製</button>
+            <button id="downloadConfigBtn" type="button">下載 CFG</button>
+          </div>
+          <div id="messages" class="messages" aria-live="polite"></div>
+        </aside>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

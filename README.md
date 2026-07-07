@@ -54,6 +54,23 @@ python -m configgen --check
 
 `python -m configgen --check` 不會改檔案，只會檢查目前的 `generated-configs/` 是否和 inventory 產生結果一致。
 
+## 圖形化介面
+
+本專案也提供本機 Web GUI：
+
+```text
+web/index.html
+```
+
+打開後可以直接新增設備、編輯 VLAN/interface/static route/OSPF、匯入或匯出 `devices.json`，並複製或下載產生後的 `.cfg`。
+
+GUI 是純前端靜態檔案，不需要 npm、Flask 或其他後端服務。若要和 CLI 流程接軌，建議在 GUI 匯出 JSON 後覆蓋 `inventory/devices.json`，再執行：
+
+```bash
+python -m configgen
+python -m configgen --check
+```
+
 ## GitHub / VS Code 流程
 
 已經建立 GitHub repo 後，日常流程建議如下：

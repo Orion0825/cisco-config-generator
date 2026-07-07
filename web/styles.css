@@ -26,8 +26,11 @@ body {
   margin: 0;
   min-width: 320px;
   background:
-    linear-gradient(180deg, #edf4f6 0, var(--bg) 220px),
+    linear-gradient(180deg, #eaf3f0 0, var(--bg) 260px),
+    linear-gradient(90deg, rgba(31, 95, 153, 0.045) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(15, 118, 110, 0.04) 1px, transparent 1px),
     var(--bg);
+  background-size: auto, 36px 36px, 36px 36px;
   color: var(--text);
   font-family: var(--sans);
   letter-spacing: 0;
@@ -45,16 +48,18 @@ button {
   min-height: 34px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: var(--surface);
+  background: linear-gradient(180deg, #fff, #f7fafb);
   color: var(--text);
   cursor: pointer;
   white-space: nowrap;
-  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
+  box-shadow: 0 1px 0 rgba(22, 33, 42, 0.04);
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
 }
 
 button:hover {
   border-color: var(--accent);
   transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(22, 33, 42, 0.08);
 }
 
 button:focus-visible,
@@ -109,7 +114,7 @@ textarea {
 .app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto 1fr;
 }
 
 .topbar {
@@ -117,9 +122,9 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px 18px;
+  padding: 14px 18px;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(12px);
   box-shadow: 0 1px 0 rgba(22, 33, 42, 0.03);
 }
@@ -134,14 +139,18 @@ textarea {
 .brand-mark {
   display: grid;
   place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #c7d8e0;
+  box-shadow: 0 8px 18px rgba(22, 33, 42, 0.1);
+}
+
+.brand-mark img {
+  display: block;
   width: 42px;
   height: 42px;
-  border-radius: 8px;
-  background: #102a33;
-  color: #bff7e5;
-  font-weight: 800;
-  letter-spacing: 0;
-  box-shadow: inset 0 -3px 0 rgba(255, 255, 255, 0.08);
 }
 
 .topbar h1 {
@@ -207,6 +216,65 @@ textarea {
   padding: 0 12px;
 }
 
+.intro-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(248, 251, 252, 0.9);
+}
+
+.intro-copy {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+}
+
+.intro-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.intro-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1px solid #b9dfd6;
+  border-radius: 999px;
+  background: #f0faf7;
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.intro-flow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.intro-flow span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid #d4e1e7;
+  color: #36505f;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .workspace {
   min-height: 0;
   display: grid;
@@ -222,7 +290,7 @@ textarea {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .device-panel,
@@ -238,6 +306,7 @@ textarea {
   min-height: 44px;
   padding: 0 12px;
   border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #ffffff, #f8fbfc);
   font-weight: 700;
 }
 
@@ -392,7 +461,7 @@ textarea {
   display: flex;
   gap: 0;
   border-bottom: 1px solid var(--line);
-  background: var(--surface-strong);
+  background: linear-gradient(180deg, #f3f7f9, var(--surface-strong));
 }
 
 .tab {
@@ -421,8 +490,8 @@ textarea {
   margin-bottom: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 1px 0 rgba(22, 33, 42, 0.03);
+  background: linear-gradient(180deg, #fff, #fbfdfe);
+  box-shadow: 0 1px 0 rgba(22, 33, 42, 0.03), 0 8px 18px rgba(22, 33, 42, 0.04);
 }
 
 .section-block:hover {
@@ -454,6 +523,7 @@ textarea {
 
 .section-block h2 {
   font-size: 16px;
+  color: #20313b;
 }
 
 .section-block h3 {
@@ -579,7 +649,7 @@ label select {
 }
 
 .output-panel {
-  grid-template-rows: auto auto 1fr auto auto;
+  grid-template-rows: auto auto auto 1fr auto auto;
 }
 
 #outputSelect {
@@ -587,18 +657,45 @@ label select {
   margin: 10px;
 }
 
+.copy-zone-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 10px 8px;
+  padding: 8px 10px;
+  border: 1px solid #b9dfd6;
+  border-radius: 8px;
+  background: #f0faf7;
+  color: var(--accent-strong);
+}
+
+.copy-zone-label span {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.copy-zone-label small {
+  color: #54726d;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
 #configOutput {
   min-height: 0;
   margin: 0 10px;
   width: calc(100% - 20px);
-  padding: 12px;
+  padding: 14px;
   font-family: var(--mono);
   font-size: 12px;
   line-height: 1.5;
-  background: #0f1820;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 64px),
+    #0f1820;
   color: #ddf6ec;
-  border-color: #22323d;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  border-color: #1f5f99;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 18px rgba(15, 24, 32, 0.12);
 }
 
 .messages {
@@ -662,6 +759,29 @@ label select {
     flex: 1 1 140px;
   }
 
+  .intro-strip {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .intro-copy {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .intro-copy strong {
+    white-space: normal;
+  }
+
+  .intro-flow {
+    justify-content: stretch;
+  }
+
+  .intro-flow span {
+    flex: 1;
+    justify-content: center;
+  }
+
   .workspace {
     grid-template-columns: 1fr;
   }
@@ -683,5 +803,14 @@ label select {
   .row .span-10,
   .row .row-action {
     grid-column: auto;
+  }
+
+  .copy-zone-label {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .copy-zone-label small {
+    text-align: left;
   }
 }

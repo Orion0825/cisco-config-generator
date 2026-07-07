@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Network switch">
+  <defs>
+    <linearGradient id="device" x1="12" y1="20" x2="82" y2="82" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1f5f99"/>
+      <stop offset="0.58" stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#293241"/>
+    </linearGradient>
+    <linearGradient id="face" x1="24" y1="34" x2="72" y2="68" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f7fbfc"/>
+      <stop offset="1" stop-color="#dbe7ec"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="18" width="76" height="60" rx="14" fill="url(#device)"/>
+  <rect x="20" y="31" width="56" height="34" rx="8" fill="url(#face)"/>
+  <rect x="27" y="40" width="8" height="7" rx="2" fill="#0f766e"/>
+  <rect x="39" y="40" width="8" height="7" rx="2" fill="#1f5f99"/>
+  <rect x="51" y="40" width="8" height="7" rx="2" fill="#0f766e"/>
+  <rect x="63" y="40" width="8" height="7" rx="2" fill="#1f5f99"/>
+  <rect x="27" y="51" width="8" height="7" rx="2" fill="#293241"/>
+  <rect x="39" y="51" width="8" height="7" rx="2" fill="#293241"/>
+  <rect x="51" y="51" width="8" height="7" rx="2" fill="#293241"/>
+  <circle cx="68" cy="54.5" r="3" fill="#c45a1b"/>
+  <path d="M30 76v8m18-8v8m18-8v8M24 84h48" fill="none" stroke="#293241" stroke-width="4" stroke-linecap="round"/>
+</svg>

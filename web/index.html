@@ -4,13 +4,15 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cisco Config Generator</title>
-    <link rel="stylesheet" href="styles.css?v=20260707-orion-title">
+    <link rel="stylesheet" href="styles.css?v=20260707-visual-polish">
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
         <div class="brand-block">
-          <div class="brand-mark" aria-hidden="true">CG</div>
+          <div class="brand-mark" aria-hidden="true">
+            <img src="assets/network-device.svg" alt="">
+          </div>
           <div>
             <h1>Cisco Config Generator</h1>
             <p id="statusText">尚未產生設定檔</p>
@@ -31,6 +33,18 @@
           </div>
         </div>
       </header>
+
+      <section class="intro-strip" aria-label="工具摘要">
+        <div class="intro-copy">
+          <span class="intro-eyebrow">Cisco 編輯器 by Orion</span>
+          <strong>從設備資料產生可直接貼上的 Cisco CLI config</strong>
+        </div>
+        <div class="intro-flow" aria-label="操作流程">
+          <span>編輯設備</span>
+          <span>檢查輸出</span>
+          <span>複製貼上</span>
+        </div>
+      </section>
 
       <main class="workspace">
         <aside class="device-panel" aria-label="設備清單">
@@ -334,9 +348,13 @@
             <strong id="outputCount">0</strong>
           </div>
           <select id="outputSelect" aria-label="選擇輸出檔案"></select>
-          <textarea id="configOutput" spellcheck="false" readonly></textarea>
+          <div class="copy-zone-label">
+            <span>Cisco CLI 可複製貼上區</span>
+            <small>產生後可直接貼到 Console / SSH</small>
+          </div>
+          <textarea id="configOutput" spellcheck="false" readonly aria-label="Cisco CLI 可複製貼上設定"></textarea>
           <div class="output-actions">
-            <button id="copyConfigBtn" type="button">複製</button>
+            <button id="copyConfigBtn" type="button">複製到剪貼簿</button>
             <button id="downloadConfigBtn" type="button">下載 CFG</button>
           </div>
           <div id="messages" class="messages" aria-live="polite"></div>
@@ -344,6 +362,6 @@
       </main>
     </div>
 
-    <script src="app.js?v=20260707-orion-title"></script>
+    <script src="app.js?v=20260707-visual-polish"></script>
   </body>
 </html>

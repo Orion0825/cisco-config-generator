@@ -1,38 +1,50 @@
 # Cisco Config Generator
 
-Small starter project for generating Cisco IOS-style configuration from structured inventory.
+這是一個用結構化 inventory 產生 Cisco IOS 風格設定檔的小型專案。目標是把設備參數集中放在 `inventory/devices.json`，再由產生器輸出可檢查、可版本控管的 `.cfg` 檔案。
 
-## Workflow
+## 使用流程
 
-1. Edit `inventory/devices.json`.
-2. Generate configs:
+1. 編輯 `inventory/devices.json`。
+2. 從專案根目錄產生設定檔：
 
    ```bash
    python -m configgen
    ```
 
-3. Review the files in `generated-configs/`.
-4. Commit both inventory and generated configs to GitHub.
+3. 檢查 `generated-configs/` 內的輸出。
+4. 確認沒有問題後，將 inventory 與產生後的 config 一起 commit 並 push 到 GitHub。
 
-GitHub Actions runs unit tests and verifies that generated configs are current on every push and pull request.
+GitHub Actions 會在 push 與 pull request 時執行測試，並確認 `generated-configs/` 裡的設定檔是否已依照最新 inventory 重新產生。
 
-## Inventory Model
+## 專案結構
 
-The starter supports:
+```text
+configgen/             產生器程式
+inventory/devices.json 設備與共用參數
+generated-configs/     產生後的 Cisco config
+tests/                 單元測試
+.github/workflows/     GitHub Actions 檢查流程
+```
 
-- global defaults for DNS, NTP, SSH, VTY, and local users
-- VLAN definitions
-- routed interfaces
-- access ports with optional voice VLAN
-- trunk ports with native and allowed VLANs
-- SVIs
-- loopbacks
-- IPv4 static routes
-- simple OSPF network statements
+## Inventory 支援項目
 
-Secrets can be referenced as environment variables using `${NAME}`. If the variable is missing, the generated config includes `__MISSING_ENV_NAME__` so it is obvious before deployment.
+目前支援：
 
-## Useful Commands
+- DNS、NTP、SSH、VTY 與本地使用者的全域預設值
+- VLAN 定義
+- routed interface
+- access port，可選 voice VLAN
+- trunk port，可設定 native VLAN 與 allowed VLAN
+- SVI
+- loopback
+- IPv4 static route
+- 基本 OSPF network statement
+
+密碼或敏感資料可以用環境變數引用，例如 `${CISCO_NETADMIN_SECRET}`。如果環境變數沒有設定，產生的 config 會顯示 `__MISSING_ENV_CISCO_NETADMIN_SECRET__`，方便在部署前發現問題。
+
+## 常用指令
+
+請在專案根目錄執行：
 
 ```bash
 python -m unittest discover -s tests -p 'test*.py'
@@ -40,15 +52,25 @@ python -m configgen
 python -m configgen --check
 ```
 
-## GitHub Setup
+`python -m configgen --check` 不會改檔案，只會檢查目前的 `generated-configs/` 是否和 inventory 產生結果一致。
 
-From this directory:
+## GitHub / VS Code 流程
+
+已經建立 GitHub repo 後，日常流程建議如下：
 
 ```bash
-git init
-git add .
-git commit -m "Add Cisco config generator"
-gh repo create cisco-config-generator --private --source . --push
+git status
+python -m configgen
+python -m configgen --check
+git add inventory generated-configs
+git commit -m "Update generated Cisco configs"
+git push
 ```
 
-If you do not use GitHub CLI, create an empty repository in GitHub, then add it as `origin` and push.
+也可以直接在 VS Code 的 Source Control 面板操作 commit 與 push。只要 VS Code 已登入 GitHub，就可以用圖形介面發布分支與同步變更。
+
+## 注意事項
+
+- 不要直接手改 `generated-configs/*.cfg`，應該改 `inventory/devices.json` 後重新產生。
+- 正式環境部署前，請先在 lab 或維護時段驗證 config。
+- 目前產生器主要針對 IPv4 與常見 IOS 語法，若要支援 NX-OS、IOS XE 特定功能或更完整的 BGP/ACL/QoS，可以再擴充資料模型與產生邏輯。

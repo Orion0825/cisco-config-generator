@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cisco Config Generator</title>
-    <link rel="stylesheet" href="styles.css?v=20260707-interactive-flow">
+    <link rel="stylesheet" href="styles.css?v=20260707-ccie-complete">
   </head>
   <body>
     <div class="app-shell">
@@ -142,6 +142,14 @@
                     Router ID
                     <input id="ospfRouterId" autocomplete="off">
                   </label>
+                  <label>
+                    Redistribute
+                    <input id="ospfRedistributeSources" autocomplete="off" placeholder="connected,static">
+                  </label>
+                  <label>
+                    Route-map
+                    <input id="ospfRedistributeRouteMap" autocomplete="off">
+                  </label>
                 </div>
                 <div class="section-heading compact">
                   <h3>Network</h3>
@@ -172,6 +180,18 @@
                   <label>
                     Passive Interfaces
                     <input id="eigrpPassiveInterfaces" autocomplete="off" placeholder="GigabitEthernet0/1,GigabitEthernet0/2">
+                  </label>
+                  <label>
+                    Redistribute
+                    <input id="eigrpRedistributeSources" autocomplete="off" placeholder="connected,static">
+                  </label>
+                  <label>
+                    Redist Metric
+                    <input id="eigrpRedistributeMetric" autocomplete="off" placeholder="10000 100 255 1 1500">
+                  </label>
+                  <label>
+                    Route-map
+                    <input id="eigrpRedistributeRouteMap" autocomplete="off">
                   </label>
                   <label class="switch field-switch">
                     <input id="eigrpNoAutoSummary" type="checkbox">
@@ -204,6 +224,14 @@
                     Router ID
                     <input id="bgpRouterId" autocomplete="off">
                   </label>
+                  <label>
+                    Redistribute
+                    <input id="bgpRedistributeSources" autocomplete="off" placeholder="connected,static">
+                  </label>
+                  <label>
+                    Route-map
+                    <input id="bgpRedistributeRouteMap" autocomplete="off">
+                  </label>
                 </div>
                 <div class="section-heading compact">
                   <h3>Neighbor</h3>
@@ -220,6 +248,30 @@
           </form>
 
           <form id="advancedForm" class="form-stack hidden">
+            <section class="section-block routing-card routing-policy">
+              <div class="section-heading">
+                <h2>VRF</h2>
+                <button id="addVrfBtn" type="button">新增 VRF</button>
+              </div>
+              <div id="vrfRows" class="rows"></div>
+            </section>
+
+            <section class="section-block routing-card routing-policy">
+              <div class="section-heading">
+                <h2>Prefix-list</h2>
+                <button id="addPrefixListBtn" type="button">新增 Prefix-list</button>
+              </div>
+              <div id="prefixListRows" class="rows"></div>
+            </section>
+
+            <section class="section-block routing-card routing-policy">
+              <div class="section-heading">
+                <h2>Route-map</h2>
+                <button id="addRouteMapBtn" type="button">新增 Route-map</button>
+              </div>
+              <div id="routeMapRows" class="rows"></div>
+            </section>
+
             <section class="section-block">
               <div class="section-heading">
                 <h2>STP</h2>
@@ -362,6 +414,6 @@
       </main>
     </div>
 
-    <script src="app.js?v=20260707-interactive-flow"></script>
+    <script src="app.js?v=20260707-ccie-complete"></script>
   </body>
 </html>

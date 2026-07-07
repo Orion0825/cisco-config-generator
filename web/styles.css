@@ -3,6 +3,7 @@
   --surface: #ffffff;
   --surface-strong: #eef3f6;
   --surface-soft: #f8fbfc;
+  --surface-tint: #ecf7f4;
   --line: #d8e0e5;
   --text: #16212a;
   --muted: #66737d;
@@ -118,6 +119,9 @@ textarea {
 }
 
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -142,7 +146,9 @@ textarea {
   width: 48px;
   height: 48px;
   border-radius: 8px;
-  background: #fff;
+  background:
+    linear-gradient(145deg, rgba(15, 118, 110, 0.08), rgba(31, 95, 153, 0.08)),
+    #fff;
   border: 1px solid #c7d8e0;
   box-shadow: 0 8px 18px rgba(22, 33, 42, 0.1);
 }
@@ -188,6 +194,7 @@ textarea {
   border-radius: 6px;
   background: #fff;
   text-align: center;
+  box-shadow: inset 0 -1px 0 rgba(22, 33, 42, 0.04);
 }
 
 .quick-stats strong {
@@ -223,7 +230,9 @@ textarea {
   gap: 14px;
   padding: 10px 18px;
   border-bottom: 1px solid var(--line);
-  background: rgba(248, 251, 252, 0.9);
+  background:
+    linear-gradient(90deg, rgba(15, 118, 110, 0.08), transparent 38%),
+    rgba(248, 251, 252, 0.92);
 }
 
 .intro-copy {
@@ -361,6 +370,11 @@ textarea {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
+.device-item:hover:not(.active) {
+  background: #f5faf9;
+  border-color: #c8d5dc;
+}
+
 .device-title {
   display: flex;
   align-items: center;
@@ -447,10 +461,17 @@ textarea {
 }
 
 .protocol-badge.acl,
-.protocol-badge.nat {
+.protocol-badge.nat,
+.protocol-badge.policy {
   border-color: #d5c8f5;
   background: #f6f2ff;
   color: var(--violet);
+}
+
+.protocol-badge.vrf {
+  border-color: #b9d2ef;
+  background: #eef7ff;
+  color: var(--blue);
 }
 
 .protocol-badge.dhcp,
@@ -514,6 +535,7 @@ textarea {
   border-radius: 8px;
   background: linear-gradient(180deg, #fff, #fbfdfe);
   box-shadow: 0 1px 0 rgba(22, 33, 42, 0.03), 0 8px 18px rgba(22, 33, 42, 0.04);
+  scroll-margin: 16px;
 }
 
 .section-block:hover {
@@ -538,6 +560,10 @@ textarea {
   border-left-color: var(--orange);
 }
 
+.routing-policy {
+  border-left-color: var(--violet);
+}
+
 .section-block h2,
 .section-block h3 {
   margin: 0;
@@ -546,6 +572,20 @@ textarea {
 .section-block h2 {
   font-size: 16px;
   color: #20313b;
+}
+
+.section-heading h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-heading h2::before {
+  content: "";
+  width: 6px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--accent);
 }
 
 .section-block h3 {
@@ -605,6 +645,11 @@ label select {
   background: var(--surface-soft);
 }
 
+.row:hover {
+  background: #fff;
+  border-color: #cbd8de;
+}
+
 .row:focus-within {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.08);
@@ -612,6 +657,10 @@ label select {
 
 .row .span-2 {
   grid-column: span 2;
+}
+
+.row .span-1 {
+  grid-column: span 1;
 }
 
 .row .span-3 {
@@ -637,6 +686,9 @@ label select {
 .row .row-action {
   grid-column: span 1;
   min-width: 36px;
+  align-self: end;
+  background: #fff8f7;
+  border-color: #f0c8c3;
 }
 
 .switch {
@@ -688,7 +740,9 @@ label select {
   padding: 8px 10px;
   border: 1px solid #b9dfd6;
   border-radius: 8px;
-  background: #f0faf7;
+  background:
+    linear-gradient(90deg, rgba(15, 118, 110, 0.09), transparent),
+    #f0faf7;
   color: var(--accent-strong);
 }
 
@@ -720,6 +774,17 @@ label select {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 18px rgba(15, 24, 32, 0.12);
 }
 
+#copyConfigBtn {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 800;
+}
+
+#copyConfigBtn:hover {
+  background: var(--accent-strong);
+}
+
 .messages {
   min-height: 52px;
   max-height: 120px;
@@ -728,6 +793,7 @@ label select {
   color: var(--muted);
   font-size: 13px;
   border-top: 1px solid var(--line);
+  background: linear-gradient(180deg, #fff, var(--surface-tint));
 }
 
 .message-error {
@@ -818,6 +884,7 @@ label select {
   }
 
   .row .span-2,
+  .row .span-1,
   .row .span-3,
   .row .span-4,
   .row .span-5,

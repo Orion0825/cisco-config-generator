@@ -96,6 +96,33 @@
           }
         ]
       },
+      "vrfs": [
+        {
+          "name": "CUST-A",
+          "rd": "65001:10",
+          "route_targets_import": ["65001:10"],
+          "route_targets_export": ["65001:10"]
+        }
+      ],
+      "prefix_lists": [
+        {
+          "name": "PL-CUST-A",
+          "sequence": 10,
+          "action": "permit",
+          "prefix": "10.10.0.0/16",
+          "ge": 24,
+          "le": 32
+        }
+      ],
+      "route_maps": [
+        {
+          "name": "RM-CUST-A-OUT",
+          "sequence": 10,
+          "action": "permit",
+          "match_prefix_lists": ["PL-CUST-A"],
+          "set_local_preference": 200
+        }
+      ],
       "interfaces": [
         {
           "name": "GigabitEthernet0/0",
@@ -131,6 +158,7 @@
           "description": "Users gateway",
           "mode": "svi",
           "address": "10.10.10.2/24",
+          "vrf": "CUST-A",
           "nat_role": "inside",
           "helper_addresses": ["10.10.10.10"],
           "hsrp": [
@@ -178,6 +206,13 @@
               "prefix": "10.255.0.1/32",
               "area": 0
             }
+          ],
+          "redistribute": [
+            {
+              "source": "connected",
+              "subnets": true,
+              "route_map": "RM-CUST-A-OUT"
+            }
           ]
         },
         "eigrp": {
@@ -198,7 +233,10 @@
             {
               "address": "203.0.113.1",
               "remote_as": 65000,
-              "description": "ISP edge"
+              "description": "ISP edge",
+              "route_map_out": "RM-CUST-A-OUT",
+              "next_hop_self": true,
+              "send_community": "both"
             }
           ],
           "networks": [

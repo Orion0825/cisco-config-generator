@@ -119,9 +119,12 @@ def render_device(defaults: dict[str, Any], device: dict[str, Any]) -> str:
         add(f"crypto key generate rsa modulus {int(ssh.get('modulus', 2048))}")
 
     add("!")
+    render_vrfs(lines, device.get("vrfs", []))
     render_spanning_tree(lines, device.get("spanning_tree", {}))
     render_dhcp(lines, device.get("dhcp", {}))
     render_acls(lines, device.get("acls", []))
+    render_prefix_lists(lines, device.get("prefix_lists", []))
+    render_route_maps(lines, device.get("route_maps", []))
     render_vlans(lines, device.get("vlans", []))
     render_interfaces(lines, device.get("interfaces", []))
     render_nat(lines, device.get("nat", {}))
@@ -130,6 +133,50 @@ def render_device(defaults: dict[str, Any], device: dict[str, Any]) -> str:
     add("end")
 
     return "\n".join(lines).rstrip() + "\n"
+
+
+def render_vrfs(lines: list[str], vrfs: list[dict[str, Any]]) -> None:
+    for vrf in vrfs:
+        lines.append(f"ip vrf {vrf['name']}")
+        if vrf.get("rd"):
+            lines.append(f" rd {vrf['rd']}")
+        for target in vrf.get("route_targets_import", []):
+            lines.append(f" route-target import {target}")
+        for target in vrf.get("route_targets_export", []):
+            lines.append(f" route-target export {target}")
+        lines.append("!")
+
+
+def render_prefix_lists(lines: list[str], prefix_lists: list[dict[str, Any]]) -> None:
+    for item in prefix_lists:
+        prefix = ipaddress.ip_network(item["prefix"], strict=False)
+        if prefix.version != 4:
+            raise InventoryError("only IPv4 prefix-lists are supported right now")
+        sequence = f" seq {int(item['sequence'])}" if item.get("sequence") else ""
+        line = f"ip prefix-list {item['name']}{sequence} {item.get('action', 'permit')} {prefix.with_prefixlen}"
+        if item.get("ge"):
+            line += f" ge {int(item['ge'])}"
+        if item.get("le"):
+            line += f" le {int(item['le'])}"
+        lines.append(line)
+    if prefix_lists:
+        lines.append("!")
+
+
+def render_route_maps(lines: list[str], route_maps: list[dict[str, Any]]) -> None:
+    for route_map in route_maps:
+        sequence = int(route_map.get("sequence", 10))
+        action = route_map.get("action", "permit")
+        lines.append(f"route-map {route_map['name']} {action} {sequence}")
+        if route_map.get("match_prefix_lists"):
+            lines.append(f" match ip address prefix-list {' '.join(route_map['match_prefix_lists'])}")
+        if route_map.get("set_local_preference"):
+            lines.append(f" set local-preference {int(route_map['set_local_preference'])}")
+        if route_map.get("set_metric"):
+            lines.append(f" set metric {route_map['set_metric']}")
+        if route_map.get("set_as_path_prepend"):
+            lines.append(f" set as-path prepend {route_map['set_as_path_prepend']}")
+        lines.append("!")
 
 
 def render_vlans(lines: list[str], vlans: list[dict[str, Any]]) -> None:
@@ -191,6 +238,8 @@ def render_interfaces(lines: list[str], interfaces: list[dict[str, Any]]) -> Non
         lines.append(f"interface {require_string(interface, 'name', 'interfaces')}")
         if interface.get("description"):
             lines.append(f" description {interface['description']}")
+        if interface.get("vrf"):
+            lines.append(f" vrf forwarding {interface['vrf']}")
 
         if mode == "routed":
             render_layer3_address(lines, interface)
@@ -283,7 +332,10 @@ def render_routing(lines: list[str], routing: dict[str, Any], device_layer: str 
         destination = ipaddress.ip_network(route["destination"], strict=False)
         if destination.version != 4:
             raise InventoryError("only IPv4 static routes are supported right now")
-        lines.append(f"ip route {destination.network_address} {destination.netmask} {route['next_hop']}")
+        if route.get("vrf"):
+            lines.append(f"ip route vrf {route['vrf']} {destination.network_address} {destination.netmask} {route['next_hop']}")
+        else:
+            lines.append(f"ip route {destination.network_address} {destination.netmask} {route['next_hop']}")
 
     ospf = routing.get("ospf")
     if ospf:
@@ -296,6 +348,7 @@ def render_routing(lines: list[str], routing: dict[str, Any], device_layer: str 
             if prefix.version != 4:
                 raise InventoryError("only IPv4 OSPF networks are supported right now")
             lines.append(f" network {prefix.network_address} {wildcard_mask(prefix)} area {network.get('area', 0)}")
+        render_redistribute(lines, ospf.get("redistribute", []), default_subnets=True)
 
     eigrp = routing.get("eigrp")
     if eigrp:
@@ -310,6 +363,7 @@ def render_routing(lines: list[str], routing: dict[str, Any], device_layer: str 
             lines.append(f" network {prefix.network_address} {wildcard_mask(prefix)}")
         for interface in eigrp.get("passive_interfaces", []):
             lines.append(f" passive-interface {interface}")
+        render_redistribute(lines, eigrp.get("redistribute", []))
         if eigrp.get("no_auto_summary", True):
             lines.append(" no auto-summary")
 
@@ -326,14 +380,43 @@ def render_routing(lines: list[str], routing: dict[str, Any], device_layer: str 
                 lines.append(f" neighbor {address} description {neighbor['description']}")
             if neighbor.get("update_source"):
                 lines.append(f" neighbor {address} update-source {neighbor['update_source']}")
+            if neighbor.get("next_hop_self"):
+                lines.append(f" neighbor {address} next-hop-self")
+            if neighbor.get("send_community"):
+                community = neighbor["send_community"]
+                suffix = f" {community}" if isinstance(community, str) and community not in {"true", "True"} else " both"
+                lines.append(f" neighbor {address} send-community{suffix}")
+            if neighbor.get("soft_reconfiguration"):
+                lines.append(f" neighbor {address} soft-reconfiguration inbound")
+            if neighbor.get("route_map_in"):
+                lines.append(f" neighbor {address} route-map {neighbor['route_map_in']} in")
+            if neighbor.get("route_map_out"):
+                lines.append(f" neighbor {address} route-map {neighbor['route_map_out']} out")
+            if neighbor.get("prefix_list_in"):
+                lines.append(f" neighbor {address} prefix-list {neighbor['prefix_list_in']} in")
+            if neighbor.get("prefix_list_out"):
+                lines.append(f" neighbor {address} prefix-list {neighbor['prefix_list_out']} out")
         for network in bgp.get("networks", []):
             prefix = ipaddress.ip_network(network["prefix"], strict=False)
             if prefix.version != 4:
                 raise InventoryError("only IPv4 BGP networks are supported right now")
             lines.append(f" network {prefix.network_address} mask {prefix.netmask}")
+        render_redistribute(lines, bgp.get("redistribute", []))
 
     if routing.get("static") or ospf or eigrp or bgp:
         lines.append("!")
+
+
+def render_redistribute(lines: list[str], items: list[dict[str, Any]], default_subnets: bool = False) -> None:
+    for item in items:
+        line = f" redistribute {item['source']}"
+        if item.get("metric"):
+            line += f" metric {item['metric']}"
+        if item.get("subnets", default_subnets):
+            line += " subnets"
+        if item.get("route_map"):
+            line += f" route-map {item['route_map']}"
+        lines.append(line)
 
 
 def render_vty(lines: list[str], defaults: dict[str, Any], device: dict[str, Any], has_local_users: bool) -> None:
@@ -368,13 +451,17 @@ def validate_inventory(inventory: dict[str, Any]) -> None:
             else:
                 seen_hostnames.add(hostname)
             errors.extend(validate_device_metadata(device, index))
+            errors.extend(validate_vrfs(device, index))
             errors.extend(validate_spanning_tree(device, index))
             errors.extend(validate_dhcp(device, index))
             errors.extend(validate_acls(device, index))
+            errors.extend(validate_prefix_lists(device, index))
+            errors.extend(validate_route_maps(device, index))
             errors.extend(validate_vlans(device, index))
             errors.extend(validate_interfaces(device, index))
             errors.extend(validate_nat(device, index))
             errors.extend(validate_routing(device, index))
+            errors.extend(validate_device_references(device, index))
 
     if errors:
         raise InventoryError("\n".join(errors))
@@ -414,6 +501,130 @@ def validate_device_metadata(device: dict[str, Any], device_index: int) -> list[
 
     for user_index, user in enumerate(device.get("local_users", [])):
         errors.extend(validate_user(user, f"devices[{device_index}].local_users[{user_index}]"))
+    return errors
+
+
+def validate_vrfs(device: dict[str, Any], device_index: int) -> list[str]:
+    errors = []
+    seen = set()
+    for index, vrf in enumerate(device.get("vrfs", [])):
+        name = vrf.get("name")
+        if name:
+            errors.extend(validate_cli_safe(str(name), f"devices[{device_index}].vrfs[{index}].name"))
+            if name in seen:
+                errors.append(f"devices[{device_index}].vrfs[{index}].name duplicates {name}")
+            seen.add(name)
+        else:
+            errors.append(f"devices[{device_index}].vrfs[{index}].name is required")
+        if vrf.get("rd"):
+            errors.extend(validate_cli_safe(str(vrf["rd"]), f"devices[{device_index}].vrfs[{index}].rd"))
+        for key in ("route_targets_import", "route_targets_export"):
+            for target_index, target in enumerate(vrf.get(key, [])):
+                errors.extend(validate_cli_safe(str(target), f"devices[{device_index}].vrfs[{index}].{key}[{target_index}]"))
+    return errors
+
+
+def validate_prefix_lists(device: dict[str, Any], device_index: int) -> list[str]:
+    errors = []
+    for index, item in enumerate(device.get("prefix_lists", [])):
+        if item.get("name"):
+            errors.extend(validate_cli_safe(str(item["name"]), f"devices[{device_index}].prefix_lists[{index}].name"))
+        else:
+            errors.append(f"devices[{device_index}].prefix_lists[{index}].name is required")
+        if item.get("action", "permit") not in ACL_ACTIONS:
+            errors.append(f"devices[{device_index}].prefix_lists[{index}].action must be permit or deny")
+        errors.extend(validate_ip_network(item.get("prefix"), f"devices[{device_index}].prefix_lists[{index}].prefix"))
+        for key in ("sequence", "ge", "le"):
+            if item.get(key):
+                try:
+                    value = int(item[key])
+                    if value < 0 or (key in {"ge", "le"} and value > 32):
+                        errors.append(f"devices[{device_index}].prefix_lists[{index}].{key} must be 0-32")
+                except (TypeError, ValueError):
+                    errors.append(f"devices[{device_index}].prefix_lists[{index}].{key} must be an integer")
+    return errors
+
+
+def validate_route_maps(device: dict[str, Any], device_index: int) -> list[str]:
+    errors = []
+    for index, item in enumerate(device.get("route_maps", [])):
+        if item.get("name"):
+            errors.extend(validate_cli_safe(str(item["name"]), f"devices[{device_index}].route_maps[{index}].name"))
+        else:
+            errors.append(f"devices[{device_index}].route_maps[{index}].name is required")
+        if item.get("action", "permit") not in ACL_ACTIONS:
+            errors.append(f"devices[{device_index}].route_maps[{index}].action must be permit or deny")
+        try:
+            sequence = int(item.get("sequence", 10))
+            if sequence < 0:
+                errors.append(f"devices[{device_index}].route_maps[{index}].sequence must be 0 or greater")
+        except (TypeError, ValueError):
+            errors.append(f"devices[{device_index}].route_maps[{index}].sequence must be an integer")
+        for list_index, name in enumerate(item.get("match_prefix_lists", [])):
+            errors.extend(validate_cli_safe(str(name), f"devices[{device_index}].route_maps[{index}].match_prefix_lists[{list_index}]"))
+        for key in ("set_metric", "set_as_path_prepend"):
+            if item.get(key):
+                errors.extend(validate_cli_safe(str(item[key]), f"devices[{device_index}].route_maps[{index}].{key}"))
+        if item.get("set_local_preference"):
+            try:
+                local_preference = int(item["set_local_preference"])
+                if local_preference < 0:
+                    errors.append(f"devices[{device_index}].route_maps[{index}].set_local_preference must be 0 or greater")
+            except (TypeError, ValueError):
+                errors.append(f"devices[{device_index}].route_maps[{index}].set_local_preference must be an integer")
+    return errors
+
+
+def validate_device_references(device: dict[str, Any], device_index: int) -> list[str]:
+    errors = []
+    vrf_names = {vrf["name"] for vrf in device.get("vrfs", []) if vrf.get("name")}
+    prefix_list_names = {item["name"] for item in device.get("prefix_lists", []) if item.get("name")}
+    route_map_names = {item["name"] for item in device.get("route_maps", []) if item.get("name")}
+    acl_names = {acl["name"] for acl in device.get("acls", []) if acl.get("name")}
+    interface_names = {interface["name"] for interface in device.get("interfaces", []) if interface.get("name")}
+
+    def require_defined(value: Any, known_values: set[str], field: str, object_type: str) -> None:
+        if value and str(value) not in known_values:
+            errors.append(f"{field} references undefined {object_type}: {value}")
+
+    for index, route_map in enumerate(device.get("route_maps", [])):
+        for list_index, name in enumerate(route_map.get("match_prefix_lists", [])):
+            require_defined(
+                name,
+                prefix_list_names,
+                f"devices[{device_index}].route_maps[{index}].match_prefix_lists[{list_index}]",
+                "prefix-list",
+            )
+
+    for index, interface in enumerate(device.get("interfaces", [])):
+        require_defined(interface.get("vrf"), vrf_names, f"devices[{device_index}].interfaces[{index}].vrf", "VRF")
+        for acl_index, item in enumerate(interface.get("access_groups", [])):
+            require_defined(item.get("name"), acl_names, f"devices[{device_index}].interfaces[{index}].access_groups[{acl_index}].name", "ACL")
+
+    routing = device.get("routing", {})
+    for index, route in enumerate(routing.get("static", [])):
+        require_defined(route.get("vrf"), vrf_names, f"devices[{device_index}].routing.static[{index}].vrf", "VRF")
+
+    if routing.get("eigrp"):
+        for index, interface in enumerate(routing["eigrp"].get("passive_interfaces", [])):
+            require_defined(interface, interface_names, f"devices[{device_index}].routing.eigrp.passive_interfaces[{index}]", "interface")
+
+    if routing.get("bgp"):
+        for index, neighbor in enumerate(routing["bgp"].get("neighbors", [])):
+            require_defined(neighbor.get("update_source"), interface_names, f"devices[{device_index}].routing.bgp.neighbors[{index}].update_source", "interface")
+            require_defined(neighbor.get("route_map_in"), route_map_names, f"devices[{device_index}].routing.bgp.neighbors[{index}].route_map_in", "route-map")
+            require_defined(neighbor.get("route_map_out"), route_map_names, f"devices[{device_index}].routing.bgp.neighbors[{index}].route_map_out", "route-map")
+            require_defined(neighbor.get("prefix_list_in"), prefix_list_names, f"devices[{device_index}].routing.bgp.neighbors[{index}].prefix_list_in", "prefix-list")
+            require_defined(neighbor.get("prefix_list_out"), prefix_list_names, f"devices[{device_index}].routing.bgp.neighbors[{index}].prefix_list_out", "prefix-list")
+
+    for protocol in ("ospf", "eigrp", "bgp"):
+        for index, item in enumerate(routing.get(protocol, {}).get("redistribute", [])):
+            require_defined(item.get("route_map"), route_map_names, f"devices[{device_index}].routing.{protocol}.redistribute[{index}].route_map", "route-map")
+
+    for index, item in enumerate(device.get("nat", {}).get("inside_source", [])):
+        require_defined(item.get("acl"), acl_names, f"devices[{device_index}].nat.inside_source[{index}].acl", "ACL")
+        require_defined(item.get("interface"), interface_names, f"devices[{device_index}].nat.inside_source[{index}].interface", "interface")
+
     return errors
 
 
@@ -528,6 +739,10 @@ def validate_interfaces(device: dict[str, Any], device_index: int) -> list[str]:
             errors.append(f"devices[{device_index}].interfaces[{index}].mode must be one of {sorted(INTERFACE_MODES)}")
         if device_layer == "L2" and mode in {"routed", "loopback"}:
             errors.append(f"devices[{device_index}].interfaces[{index}].mode {mode} is not allowed on L2 devices")
+        if interface.get("vrf"):
+            if mode not in {"routed", "svi", "loopback"}:
+                errors.append(f"devices[{device_index}].interfaces[{index}].vrf is only allowed on L3 interface modes")
+            errors.extend(validate_cli_safe(str(interface["vrf"]), f"devices[{device_index}].interfaces[{index}].vrf"))
         if mode in {"routed", "svi", "loopback"} and interface.get("address"):
             errors.extend(validate_ip_interface(interface["address"], f"devices[{device_index}].interfaces[{index}].address"))
         if mode == "access" and "access_vlan" not in interface:
@@ -624,6 +839,8 @@ def validate_routing(device: dict[str, Any], device_index: int) -> list[str]:
         except (KeyError, ValueError):
             errors.append(f"devices[{device_index}].routing.static[{index}].destination must be a valid IPv4 prefix")
         errors.extend(validate_ip_address(route.get("next_hop"), f"devices[{device_index}].routing.static[{index}].next_hop"))
+        if route.get("vrf"):
+            errors.extend(validate_cli_safe(str(route["vrf"]), f"devices[{device_index}].routing.static[{index}].vrf"))
 
     for protocol in ("ospf", "eigrp", "bgp"):
         if device_layer == "L2" and routing.get(protocol):
@@ -647,6 +864,7 @@ def validate_routing(device: dict[str, Any], device_index: int) -> list[str]:
                     errors.append(f"devices[{device_index}].routing.ospf.networks[{index}].area must be 0 or greater")
             except (TypeError, ValueError):
                 errors.append(f"devices[{device_index}].routing.ospf.networks[{index}].area must be an integer")
+        errors.extend(validate_redistribute(ospf.get("redistribute", []), f"devices[{device_index}].routing.ospf.redistribute"))
 
     eigrp = routing.get("eigrp")
     if eigrp:
@@ -658,6 +876,7 @@ def validate_routing(device: dict[str, Any], device_index: int) -> list[str]:
         for index, interface in enumerate(eigrp.get("passive_interfaces", [])):
             if not INTERFACE_NAME_PATTERN.fullmatch(str(interface)):
                 errors.append(f"devices[{device_index}].routing.eigrp.passive_interfaces[{index}] contains invalid CLI characters")
+        errors.extend(validate_redistribute(eigrp.get("redistribute", []), f"devices[{device_index}].routing.eigrp.redistribute"))
 
     bgp = routing.get("bgp")
     if bgp:
@@ -671,8 +890,29 @@ def validate_routing(device: dict[str, Any], device_index: int) -> list[str]:
                 errors.extend(validate_cli_safe(str(neighbor["description"]), f"devices[{device_index}].routing.bgp.neighbors[{index}].description"))
             if neighbor.get("update_source") and not INTERFACE_NAME_PATTERN.fullmatch(str(neighbor["update_source"])):
                 errors.append(f"devices[{device_index}].routing.bgp.neighbors[{index}].update_source contains invalid CLI characters")
+            for key in ("route_map_in", "route_map_out", "prefix_list_in", "prefix_list_out"):
+                if neighbor.get(key):
+                    errors.extend(validate_cli_safe(str(neighbor[key]), f"devices[{device_index}].routing.bgp.neighbors[{index}].{key}"))
+            if neighbor.get("send_community") and isinstance(neighbor["send_community"], str):
+                if neighbor["send_community"] not in {"standard", "extended", "both"}:
+                    errors.append(f"devices[{device_index}].routing.bgp.neighbors[{index}].send_community must be standard, extended, both, or true")
         for index, network in enumerate(bgp.get("networks", [])):
             errors.extend(validate_ip_network(network.get("prefix"), f"devices[{device_index}].routing.bgp.networks[{index}].prefix"))
+        errors.extend(validate_redistribute(bgp.get("redistribute", []), f"devices[{device_index}].routing.bgp.redistribute"))
+    return errors
+
+
+def validate_redistribute(items: list[dict[str, Any]], field: str) -> list[str]:
+    errors = []
+    for index, item in enumerate(items):
+        source = item.get("source")
+        if source:
+            errors.extend(validate_cli_safe(str(source), f"{field}[{index}].source"))
+        else:
+            errors.append(f"{field}[{index}].source is required")
+        for key in ("metric", "route_map"):
+            if item.get(key):
+                errors.extend(validate_cli_safe(str(item[key]), f"{field}[{index}].{key}"))
     return errors
 
 

@@ -42,6 +42,12 @@ tests/                 單元測試
 - 基本 OSPF network statement
 - 基本 EIGRP network、passive-interface、no auto-summary
 - 基本 BGP neighbor、remote-as、router-id、network statement
+- VRF、RD、route-target import/export
+- Prefix-list
+- Route-map match prefix-list、set local-preference、metric、AS-path prepend
+- OSPF / EIGRP / BGP redistribute
+- BGP neighbor route-map in/out、prefix-list in/out、next-hop-self、send-community、soft-reconfiguration
+- VRF、ACL、Prefix-list、Route-map、NAT interface 與 BGP policy 引用檢查
 - STP mode、PortFast default、BPDU Guard default、VLAN priority
 - EtherChannel / Port-channel member `channel-group`
 - Access port Port Security
@@ -95,9 +101,60 @@ L2 設備會把 `0.0.0.0/0` static route 產生成 `ip default-gateway`，並禁
     "asn": 65001,
     "router_id": "10.255.0.1",
     "neighbors": [
-      { "address": "203.0.113.1", "remote_as": 65000, "description": "ISP edge" }
+      {
+        "address": "203.0.113.1",
+        "remote_as": 65000,
+        "description": "ISP edge",
+        "route_map_out": "RM-CUST-A-OUT",
+        "next_hop_self": true,
+        "send_community": "both"
+      }
     ],
     "networks": [{ "prefix": "203.0.113.0/30" }]
+  }
+}
+```
+
+### CCIE 常用 Policy 功能
+
+可在設備層級定義 VRF、prefix-list、route-map，再套用到 interface、static route、BGP neighbor 或 redistribution：
+
+```json
+{
+  "vrfs": [
+    {
+      "name": "CUST-A",
+      "rd": "65001:10",
+      "route_targets_import": ["65001:10"],
+      "route_targets_export": ["65001:10"]
+    }
+  ],
+  "prefix_lists": [
+    { "name": "PL-CUST-A", "sequence": 10, "action": "permit", "prefix": "10.10.0.0/16", "ge": 24, "le": 32 }
+  ],
+  "route_maps": [
+    {
+      "name": "RM-CUST-A-OUT",
+      "sequence": 10,
+      "action": "permit",
+      "match_prefix_lists": ["PL-CUST-A"],
+      "set_local_preference": 200
+    }
+  ]
+}
+```
+
+介面與路由可以引用：
+
+```json
+{
+  "interfaces": [{ "name": "Vlan10", "mode": "svi", "address": "10.10.10.2/24", "vrf": "CUST-A" }],
+  "routing": {
+    "static": [{ "vrf": "CUST-A", "destination": "0.0.0.0/0", "next_hop": "10.10.10.1" }],
+    "ospf": {
+      "process_id": 10,
+      "redistribute": [{ "source": "connected", "subnets": true, "route_map": "RM-CUST-A-OUT" }]
+    }
   }
 }
 ```
@@ -181,7 +238,7 @@ python -m configgen --check
 web/index.html
 ```
 
-打開後可以直接新增設備、編輯 VLAN/interface/static route/OSPF/EIGRP/BGP，也能在「進階」分頁直接調整 STP、DHCP、ACL、NAT。Interface 表格也支援 NAT role、IP helper、HSRP、ACL 套用、EtherChannel、Port Security 與 BPDU Guard。編輯後右側會即時產生 `.cfg`，也可以匯入或匯出 `devices.json`。
+打開後可以直接新增設備、編輯 VLAN/interface/static route/OSPF/EIGRP/BGP，也能在「進階」分頁直接調整 VRF、Prefix-list、Route-map、STP、DHCP、ACL、NAT。Interface 表格也支援 VRF、NAT role、IP helper、HSRP、ACL 套用、EtherChannel、Port Security 與 BPDU Guard。BGP neighbor 表格支援 route-map、prefix-list、next-hop-self、send-community 與 soft-reconfiguration。編輯後右側會即時產生 `.cfg`，也可以匯入或匯出 `devices.json`。
 
 GUI 是純前端靜態檔案，不需要 npm、Flask 或其他後端服務。若要和 CLI 流程接軌，建議在 GUI 匯出 JSON 後覆蓋 `inventory/devices.json`，再執行：
 
@@ -217,4 +274,4 @@ git push
 
 - 不要直接手改 `generated-configs/*.cfg`，應該改 `inventory/devices.json` 後重新產生。
 - 正式環境部署前，請先在 lab 或維護時段驗證 config。
-- 目前產生器主要針對 IPv4 與常見 IOS 語法，若要支援 NX-OS、IOS XE 特定功能或更完整的 ACL/NAT/QoS/VRF，可以再擴充資料模型與產生邏輯。
+- 目前產生器主要針對 IPv4 與常見 IOS / IOS XE routing、switching、policy 語法，並會檢查 VRF、ACL、Prefix-list、Route-map、BGP policy、NAT interface 等引用是否存在。若後續要加入 MPLS L3VPN、IPv6、QoS class-map/policy-map 或 NX-OS 專用語法，可以在同一個資料模型繼續擴充。

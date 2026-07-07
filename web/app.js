@@ -55,6 +55,16 @@ const sampleInventory = {
       nat: {
         inside_source: [{ acl: "INSIDE-NAT", interface: "GigabitEthernet0/0", overload: true }],
       },
+      vrfs: [
+        {
+          name: "CUST-A",
+          rd: "65001:10",
+          route_targets_import: ["65001:10"],
+          route_targets_export: ["65001:10"],
+        },
+      ],
+      prefix_lists: [{ name: "PL-CUST-A", sequence: 10, action: "permit", prefix: "10.10.0.0/16", ge: 24, le: 32 }],
+      route_maps: [{ name: "RM-CUST-A-OUT", sequence: 10, action: "permit", match_prefix_lists: ["PL-CUST-A"], set_local_preference: 200 }],
       interfaces: [
         {
           name: "GigabitEthernet0/0",
@@ -85,6 +95,7 @@ const sampleInventory = {
           description: "Users gateway",
           mode: "svi",
           address: "10.10.10.2/24",
+          vrf: "CUST-A",
           nat_role: "inside",
           helper_addresses: ["10.10.10.10"],
           hsrp: [{ group: 10, virtual_ip: "10.10.10.1", priority: 110, preempt: true }],
@@ -102,6 +113,7 @@ const sampleInventory = {
           process_id: 10,
           router_id: "10.255.0.1",
           networks: [{ prefix: "10.255.0.1/32", area: 0 }],
+          redistribute: [{ source: "connected", subnets: true, route_map: "RM-CUST-A-OUT" }],
         },
         eigrp: {
           asn: 100,
@@ -113,7 +125,16 @@ const sampleInventory = {
         bgp: {
           asn: 65001,
           router_id: "10.255.0.1",
-          neighbors: [{ address: "203.0.113.1", remote_as: 65000, description: "ISP edge" }],
+          neighbors: [
+            {
+              address: "203.0.113.1",
+              remote_as: 65000,
+              description: "ISP edge",
+              route_map_out: "RM-CUST-A-OUT",
+              next_hop_self: true,
+              send_community: "both",
+            },
+          ],
           networks: [{ prefix: "203.0.113.0/30" }],
         },
       },
@@ -223,6 +244,8 @@ const elements = {
   ospfFields: document.querySelector("#ospfFields"),
   ospfProcessId: document.querySelector("#ospfProcessId"),
   ospfRouterId: document.querySelector("#ospfRouterId"),
+  ospfRedistributeSources: document.querySelector("#ospfRedistributeSources"),
+  ospfRedistributeRouteMap: document.querySelector("#ospfRedistributeRouteMap"),
   ospfNetworkRows: document.querySelector("#ospfNetworkRows"),
   eigrpSection: document.querySelector("#eigrpSection"),
   eigrpEnabled: document.querySelector("#eigrpEnabled"),
@@ -230,6 +253,9 @@ const elements = {
   eigrpAsn: document.querySelector("#eigrpAsn"),
   eigrpRouterId: document.querySelector("#eigrpRouterId"),
   eigrpPassiveInterfaces: document.querySelector("#eigrpPassiveInterfaces"),
+  eigrpRedistributeSources: document.querySelector("#eigrpRedistributeSources"),
+  eigrpRedistributeMetric: document.querySelector("#eigrpRedistributeMetric"),
+  eigrpRedistributeRouteMap: document.querySelector("#eigrpRedistributeRouteMap"),
   eigrpNoAutoSummary: document.querySelector("#eigrpNoAutoSummary"),
   eigrpNetworkRows: document.querySelector("#eigrpNetworkRows"),
   bgpSection: document.querySelector("#bgpSection"),
@@ -237,8 +263,13 @@ const elements = {
   bgpFields: document.querySelector("#bgpFields"),
   bgpAsn: document.querySelector("#bgpAsn"),
   bgpRouterId: document.querySelector("#bgpRouterId"),
+  bgpRedistributeSources: document.querySelector("#bgpRedistributeSources"),
+  bgpRedistributeRouteMap: document.querySelector("#bgpRedistributeRouteMap"),
   bgpNeighborRows: document.querySelector("#bgpNeighborRows"),
   bgpNetworkRows: document.querySelector("#bgpNetworkRows"),
+  vrfRows: document.querySelector("#vrfRows"),
+  prefixListRows: document.querySelector("#prefixListRows"),
+  routeMapRows: document.querySelector("#routeMapRows"),
   stpMode: document.querySelector("#stpMode"),
   stpPortfastDefault: document.querySelector("#stpPortfastDefault"),
   stpBpduguardDefault: document.querySelector("#stpBpduguardDefault"),
@@ -255,6 +286,9 @@ const elements = {
   addEigrpNetworkBtn: document.querySelector("#addEigrpNetworkBtn"),
   addBgpNeighborBtn: document.querySelector("#addBgpNeighborBtn"),
   addBgpNetworkBtn: document.querySelector("#addBgpNetworkBtn"),
+  addVrfBtn: document.querySelector("#addVrfBtn"),
+  addPrefixListBtn: document.querySelector("#addPrefixListBtn"),
+  addRouteMapBtn: document.querySelector("#addRouteMapBtn"),
   addStpPriorityBtn: document.querySelector("#addStpPriorityBtn"),
   addDhcpExcludedBtn: document.querySelector("#addDhcpExcludedBtn"),
   addDhcpPoolBtn: document.querySelector("#addDhcpPoolBtn"),
@@ -287,6 +321,12 @@ function normalizeInventory(inventory) {
     if (DEVICE_LAYERS.has(rawLayer)) device.device_layer = rawLayer;
     device.vlans ||= [];
     device.interfaces ||= [];
+    device.vrfs ||= [];
+    device.prefix_lists ||= [];
+    device.route_maps ||= [];
+    device.route_maps.forEach((routeMap) => {
+      routeMap.match_prefix_lists ||= [];
+    });
     device.acls ||= [];
     device.acls.forEach((acl) => {
       acl.entries ||= [];
@@ -300,15 +340,20 @@ function normalizeInventory(inventory) {
     if (device.spanning_tree) device.spanning_tree.vlan_priorities ||= [];
     device.routing ||= {};
     device.routing.static ||= [];
-    if (device.routing.ospf) device.routing.ospf.networks ||= [];
+    if (device.routing.ospf) {
+      device.routing.ospf.networks ||= [];
+      device.routing.ospf.redistribute ||= [];
+    }
     if (device.routing.eigrp) {
       device.routing.eigrp.networks ||= [];
       device.routing.eigrp.passive_interfaces ||= [];
+      device.routing.eigrp.redistribute ||= [];
       device.routing.eigrp.no_auto_summary ??= true;
     }
     if (device.routing.bgp) {
       device.routing.bgp.neighbors ||= [];
       device.routing.bgp.networks ||= [];
+      device.routing.bgp.redistribute ||= [];
     }
   });
   return normalized;
@@ -389,6 +434,8 @@ function deviceTags(device) {
   enabledDynamicProtocols(device).forEach((protocol) => tags.push(protocol.toUpperCase()));
   if (hasSpanningTreeConfig(device.spanning_tree)) tags.push("STP");
   if (device.acls?.length) tags.push("ACL");
+  if (device.vrfs?.length) tags.push("VRF");
+  if (device.prefix_lists?.length || device.route_maps?.length) tags.push("Policy");
   if (hasNatConfig(device.nat)) tags.push("NAT");
   if (hasDhcpConfig(device.dhcp)) tags.push("DHCP");
   if ((device.interfaces || []).some((iface) => iface.hsrp?.length)) tags.push("HSRP");
@@ -437,6 +484,7 @@ function renderDeviceForm() {
       selectField("Mode", "mode", item.mode || "routed", ["routed", "access", "trunk", "svi", "loopback"], "span-2"),
       field("Description", "description", item.description || "", "text", "span-4"),
       field("Address", "address", item.address || "", "text", "span-3 mode-l3"),
+      field("VRF", "vrf", item.vrf || "", "text", "span-2 mode-l3"),
       selectField("NAT", "nat_role", item.nat_role || "", ["", "inside", "outside"], "span-2 mode-l3"),
       field("Helper", "helper_addresses", (item.helper_addresses || []).join(","), "text", "span-3 mode-l3"),
       field("HSRP Group", "hsrp_group", item.hsrp?.[0]?.group ?? "", "number", "span-2 mode-l3", { min: 0, max: 255 }),
@@ -468,8 +516,9 @@ function renderDeviceForm() {
   elements.staticRouteRows.innerHTML = "";
   staticRoutes.forEach((route, index) => {
     elements.staticRouteRows.appendChild(rowElement("static", index, [
-      field("Destination", "destination", route.destination || "", "text", "span-5"),
-      field("Next Hop", "next_hop", route.next_hop || "", "text", "span-5"),
+      field("Destination", "destination", route.destination || "", "text", "span-4"),
+      field("Next Hop", "next_hop", route.next_hop || "", "text", "span-4"),
+      field("VRF", "vrf", route.vrf || "", "text", "span-2"),
     ]));
   });
 
@@ -479,6 +528,8 @@ function renderDeviceForm() {
   elements.ospfFields.classList.toggle("hidden", !ospf);
   elements.ospfProcessId.value = ospf?.process_id ?? 1;
   elements.ospfRouterId.value = ospf?.router_id || "";
+  elements.ospfRedistributeSources.value = redistributeSources(ospf?.redistribute || []);
+  elements.ospfRedistributeRouteMap.value = ospf?.redistribute?.[0]?.route_map || "";
   elements.ospfNetworkRows.innerHTML = "";
   (ospf?.networks || []).forEach((network, index) => {
     elements.ospfNetworkRows.appendChild(rowElement("ospfNetwork", index, [
@@ -494,6 +545,9 @@ function renderDeviceForm() {
   elements.eigrpAsn.value = eigrp?.asn ?? 100;
   elements.eigrpRouterId.value = eigrp?.router_id || "";
   elements.eigrpPassiveInterfaces.value = (eigrp?.passive_interfaces || []).join(",");
+  elements.eigrpRedistributeSources.value = redistributeSources(eigrp?.redistribute || []);
+  elements.eigrpRedistributeMetric.value = eigrp?.redistribute?.[0]?.metric || "";
+  elements.eigrpRedistributeRouteMap.value = eigrp?.redistribute?.[0]?.route_map || "";
   elements.eigrpNoAutoSummary.checked = eigrp?.no_auto_summary !== false;
   elements.eigrpNetworkRows.innerHTML = "";
   (eigrp?.networks || []).forEach((network, index) => {
@@ -508,13 +562,22 @@ function renderDeviceForm() {
   elements.bgpFields.classList.toggle("hidden", !bgp);
   elements.bgpAsn.value = bgp?.asn ?? 65001;
   elements.bgpRouterId.value = bgp?.router_id || "";
+  elements.bgpRedistributeSources.value = redistributeSources(bgp?.redistribute || []);
+  elements.bgpRedistributeRouteMap.value = bgp?.redistribute?.[0]?.route_map || "";
   elements.bgpNeighborRows.innerHTML = "";
   (bgp?.neighbors || []).forEach((neighbor, index) => {
     elements.bgpNeighborRows.appendChild(rowElement("bgpNeighbor", index, [
       field("Address", "address", neighbor.address || "", "text", "span-3"),
       field("Remote ASN", "remote_as", neighbor.remote_as ?? "", "number", "span-2", { min: 1 }),
-      field("Description", "description", neighbor.description || "", "text", "span-3"),
-      field("Update Source", "update_source", neighbor.update_source || "", "text", "span-3"),
+      field("Description", "description", neighbor.description || "", "text", "span-2"),
+      field("Update Source", "update_source", neighbor.update_source || "", "text", "span-2"),
+      field("RM In", "route_map_in", neighbor.route_map_in || "", "text", "span-2"),
+      field("RM Out", "route_map_out", neighbor.route_map_out || "", "text", "span-2"),
+      field("PL In", "prefix_list_in", neighbor.prefix_list_in || "", "text", "span-2"),
+      field("PL Out", "prefix_list_out", neighbor.prefix_list_out || "", "text", "span-2"),
+      checkboxField("NH Self", "next_hop_self", !!neighbor.next_hop_self, "span-2"),
+      selectField("Send Comm", "send_community", neighbor.send_community || "", ["", "standard", "extended", "both"], "span-2"),
+      checkboxField("Soft Reconfig", "soft_reconfiguration", !!neighbor.soft_reconfiguration, "span-2"),
     ]));
   });
   elements.bgpNetworkRows.innerHTML = "";
@@ -527,6 +590,41 @@ function renderDeviceForm() {
 
 function renderAdvancedForm() {
   const device = currentDevice();
+  elements.vrfRows.innerHTML = "";
+  (device.vrfs || []).forEach((vrf, index) => {
+    elements.vrfRows.appendChild(rowElement("vrf", index, [
+      field("Name", "name", vrf.name || "", "text", "span-3"),
+      field("RD", "rd", vrf.rd || "", "text", "span-3"),
+      field("Import RT", "route_targets_import", (vrf.route_targets_import || []).join(","), "text", "span-3"),
+      field("Export RT", "route_targets_export", (vrf.route_targets_export || []).join(","), "text", "span-3"),
+    ]));
+  });
+
+  elements.prefixListRows.innerHTML = "";
+  (device.prefix_lists || []).forEach((item, index) => {
+    elements.prefixListRows.appendChild(rowElement("prefixList", index, [
+      field("Name", "name", item.name || "", "text", "span-3"),
+      field("Seq", "sequence", item.sequence ?? 10, "number", "span-1", { min: 1 }),
+      selectField("Action", "action", item.action || "permit", ["permit", "deny"], "span-2"),
+      field("Prefix", "prefix", item.prefix || "", "text", "span-3"),
+      field("GE", "ge", item.ge ?? "", "number", "span-1", { min: 0, max: 32 }),
+      field("LE", "le", item.le ?? "", "number", "span-1", { min: 0, max: 32 }),
+    ]));
+  });
+
+  elements.routeMapRows.innerHTML = "";
+  (device.route_maps || []).forEach((item, index) => {
+    elements.routeMapRows.appendChild(rowElement("routeMap", index, [
+      field("Name", "name", item.name || "", "text", "span-3"),
+      field("Seq", "sequence", item.sequence ?? 10, "number", "span-1", { min: 0 }),
+      selectField("Action", "action", item.action || "permit", ["permit", "deny"], "span-2"),
+      field("Match PL", "match_prefix_lists", (item.match_prefix_lists || []).join(","), "text", "span-3"),
+      field("LocalPref", "set_local_preference", item.set_local_preference ?? "", "number", "span-2", { min: 0 }),
+      field("Metric", "set_metric", item.set_metric || "", "text", "span-2"),
+      field("AS Prepend", "set_as_path_prepend", item.set_as_path_prepend || "", "text", "span-3"),
+    ]));
+  });
+
   const stp = device.spanning_tree || {};
   elements.stpMode.value = stp.mode || "";
   elements.stpPortfastDefault.checked = !!stp.portfast_default;
@@ -894,9 +992,9 @@ function updateRowFromEvent(event) {
       updateInterfaceAccessGroup(iface, key === "access_group_in" ? "in" : "out", value);
     } else if (["port_security_maximum", "port_security_violation", "port_security_sticky"].includes(key)) {
       updateInterfacePortSecurity(iface, key, value);
-    } else if (key === "nat_role") {
+    } else if (["nat_role", "vrf"].includes(key)) {
       if (value === "") delete iface[key];
-      else iface[key] = value;
+      else iface[key] = String(value).trim();
     } else if (["shutdown", "spanning_tree_portfast", "spanning_tree_bpduguard"].includes(key)) {
       iface[key] = value;
     } else {
@@ -905,7 +1003,8 @@ function updateRowFromEvent(event) {
     if (key === "mode") updateInterfaceVisibility(row, value);
   }
   if (kind === "static") {
-    device.routing.static[index][key] = value.trim();
+    if (key === "vrf" && value === "") delete device.routing.static[index][key];
+    else device.routing.static[index][key] = value.trim();
   }
   if (kind === "ospfNetwork") {
     device.routing.ospf.networks[index][key] = key === "area" ? toNumber(value, 0) : value.trim();
@@ -915,7 +1014,8 @@ function updateRowFromEvent(event) {
   }
   if (kind === "bgpNeighbor") {
     const neighbor = device.routing.bgp.neighbors[index];
-    if (key === "remote_as") neighbor[key] = toNumber(value, value);
+    if (["next_hop_self", "soft_reconfiguration"].includes(key)) neighbor[key] = value;
+    else if (key === "remote_as") neighbor[key] = toNumber(value, value);
     else if (value === "") delete neighbor[key];
     else neighbor[key] = value.trim();
   }
@@ -961,6 +1061,35 @@ function updateRowFromEvent(event) {
     if (key === "overload") item[key] = value;
     else item[key] = value.trim();
   }
+  if (kind === "vrf") {
+    device.vrfs ||= [];
+    const vrf = device.vrfs[index];
+    if (["route_targets_import", "route_targets_export"].includes(key)) vrf[key] = splitList(value);
+    else vrf[key] = value.trim();
+  }
+  if (kind === "prefixList") {
+    device.prefix_lists ||= [];
+    const item = device.prefix_lists[index];
+    if (["sequence", "ge", "le"].includes(key)) {
+      if (value === "") delete item[key];
+      else item[key] = toNumber(value, value);
+    } else {
+      item[key] = value.trim();
+    }
+  }
+  if (kind === "routeMap") {
+    device.route_maps ||= [];
+    const item = device.route_maps[index];
+    if (key === "match_prefix_lists") item[key] = splitList(value);
+    else if (["sequence", "set_local_preference"].includes(key)) {
+      if (value === "") delete item[key];
+      else item[key] = toNumber(value, value);
+    } else if (value === "") {
+      delete item[key];
+    } else {
+      item[key] = value.trim();
+    }
+  }
   renderOutput();
 }
 
@@ -973,6 +1102,9 @@ function removeRow(kind, index, meta = {}) {
   if (kind === "eigrpNetwork") device.routing.eigrp.networks.splice(index, 1);
   if (kind === "bgpNeighbor") device.routing.bgp.neighbors.splice(index, 1);
   if (kind === "bgpNetwork") device.routing.bgp.networks.splice(index, 1);
+  if (kind === "vrf") device.vrfs.splice(index, 1);
+  if (kind === "prefixList") device.prefix_lists.splice(index, 1);
+  if (kind === "routeMap") device.route_maps.splice(index, 1);
   if (kind === "stpPriority") device.spanning_tree.vlan_priorities.splice(index, 1);
   if (kind === "dhcpExcluded") device.dhcp.excluded_addresses.splice(index, 1);
   if (kind === "dhcpPool") device.dhcp.pools.splice(index, 1);
@@ -1037,9 +1169,12 @@ function renderDevice(defaults, device) {
   }
 
   add("!");
+  renderVrfs(lines, device.vrfs || []);
   renderSpanningTree(lines, device.spanning_tree || {});
   renderDhcp(lines, device.dhcp || {});
   renderAcls(lines, device.acls || []);
+  renderPrefixLists(lines, device.prefix_lists || []);
+  renderRouteMaps(lines, device.route_maps || []);
   [...(device.vlans || [])]
     .sort((a, b) => Number(a.id) - Number(b.id))
     .forEach((vlan) => {
@@ -1057,6 +1192,40 @@ function renderDevice(defaults, device) {
   add("!");
   add("end");
   return `${lines.join("\n").trimEnd()}\n`;
+}
+
+function renderVrfs(lines, vrfs) {
+  vrfs.forEach((vrf) => {
+    lines.push(`ip vrf ${required(vrf.name, "vrf name")}`);
+    if (vrf.rd) lines.push(` rd ${vrf.rd}`);
+    (vrf.route_targets_import || []).forEach((target) => lines.push(` route-target import ${target}`));
+    (vrf.route_targets_export || []).forEach((target) => lines.push(` route-target export ${target}`));
+    lines.push("!");
+  });
+}
+
+function renderPrefixLists(lines, prefixLists) {
+  prefixLists.forEach((item) => {
+    const prefix = parseIpv4Prefix(required(item.prefix, "prefix-list prefix"));
+    let line = `ip prefix-list ${required(item.name, "prefix-list name")}`;
+    if (item.sequence) line += ` seq ${Number(item.sequence)}`;
+    line += ` ${item.action || "permit"} ${intToIp(prefix.network)}/${prefix.length}`;
+    if (item.ge) line += ` ge ${Number(item.ge)}`;
+    if (item.le) line += ` le ${Number(item.le)}`;
+    lines.push(line);
+  });
+  if (prefixLists.length) lines.push("!");
+}
+
+function renderRouteMaps(lines, routeMaps) {
+  routeMaps.forEach((item) => {
+    lines.push(`route-map ${required(item.name, "route-map name")} ${item.action || "permit"} ${Number(item.sequence || 10)}`);
+    if (item.match_prefix_lists?.length) lines.push(` match ip address prefix-list ${item.match_prefix_lists.join(" ")}`);
+    if (item.set_local_preference) lines.push(` set local-preference ${Number(item.set_local_preference)}`);
+    if (item.set_metric) lines.push(` set metric ${item.set_metric}`);
+    if (item.set_as_path_prepend) lines.push(` set as-path prepend ${item.set_as_path_prepend}`);
+    lines.push("!");
+  });
 }
 
 function renderSpanningTree(lines, spanningTree) {
@@ -1100,6 +1269,7 @@ function renderInterface(lines, iface) {
   const mode = iface.mode || "routed";
   lines.push(`interface ${required(iface.name, "interface name")}`);
   if (iface.description) lines.push(` description ${iface.description}`);
+  if (iface.vrf) lines.push(` vrf forwarding ${iface.vrf}`);
 
   if (["routed", "svi", "loopback"].includes(mode)) {
     if (iface.address) {
@@ -1169,7 +1339,8 @@ function renderRouting(lines, routing, layer = "L3") {
 
   (routing.static || []).forEach((route) => {
     const prefix = parseIpv4Prefix(required(route.destination, "static route destination"));
-    lines.push(`ip route ${intToIp(prefix.network)} ${intToIp(prefix.mask)} ${required(route.next_hop, "static route next hop")}`);
+    const vrf = route.vrf ? ` vrf ${route.vrf}` : "";
+    lines.push(`ip route${vrf} ${intToIp(prefix.network)} ${intToIp(prefix.mask)} ${required(route.next_hop, "static route next hop")}`);
   });
 
   if (routing.ospf) {
@@ -1180,6 +1351,7 @@ function renderRouting(lines, routing, layer = "L3") {
       const prefix = parseIpv4Prefix(required(network.prefix, "ospf network prefix"));
       lines.push(` network ${intToIp(prefix.network)} ${intToIp(prefix.hostmask)} area ${network.area ?? 0}`);
     });
+    renderRedistribute(lines, routing.ospf.redistribute || [], true);
   }
 
   if (routing.eigrp) {
@@ -1191,6 +1363,7 @@ function renderRouting(lines, routing, layer = "L3") {
       lines.push(` network ${intToIp(prefix.network)} ${intToIp(prefix.hostmask)}`);
     });
     (routing.eigrp.passive_interfaces || []).forEach((name) => lines.push(` passive-interface ${name}`));
+    renderRedistribute(lines, routing.eigrp.redistribute || []);
     if (routing.eigrp.no_auto_summary !== false) lines.push(" no auto-summary");
   }
 
@@ -1202,13 +1375,31 @@ function renderRouting(lines, routing, layer = "L3") {
       lines.push(` neighbor ${required(neighbor.address, "bgp neighbor address")} remote-as ${Number(required(neighbor.remote_as, "bgp remote as"))}`);
       if (neighbor.description) lines.push(` neighbor ${neighbor.address} description ${neighbor.description}`);
       if (neighbor.update_source) lines.push(` neighbor ${neighbor.address} update-source ${neighbor.update_source}`);
+      if (neighbor.next_hop_self) lines.push(` neighbor ${neighbor.address} next-hop-self`);
+      if (neighbor.send_community) lines.push(` neighbor ${neighbor.address} send-community ${neighbor.send_community === true ? "both" : neighbor.send_community}`);
+      if (neighbor.soft_reconfiguration) lines.push(` neighbor ${neighbor.address} soft-reconfiguration inbound`);
+      if (neighbor.route_map_in) lines.push(` neighbor ${neighbor.address} route-map ${neighbor.route_map_in} in`);
+      if (neighbor.route_map_out) lines.push(` neighbor ${neighbor.address} route-map ${neighbor.route_map_out} out`);
+      if (neighbor.prefix_list_in) lines.push(` neighbor ${neighbor.address} prefix-list ${neighbor.prefix_list_in} in`);
+      if (neighbor.prefix_list_out) lines.push(` neighbor ${neighbor.address} prefix-list ${neighbor.prefix_list_out} out`);
     });
     (routing.bgp.networks || []).forEach((network) => {
       const prefix = parseIpv4Prefix(required(network.prefix, "bgp network prefix"));
       lines.push(` network ${intToIp(prefix.network)} mask ${intToIp(prefix.mask)}`);
     });
+    renderRedistribute(lines, routing.bgp.redistribute || []);
   }
   if ((routing.static || []).length || routing.ospf || routing.eigrp || routing.bgp) lines.push("!");
+}
+
+function renderRedistribute(lines, items, defaultSubnets = false) {
+  items.forEach((item) => {
+    let line = ` redistribute ${required(item.source, "redistribute source")}`;
+    if (item.metric) line += ` metric ${item.metric}`;
+    if (item.subnets ?? defaultSubnets) line += " subnets";
+    if (item.route_map) line += ` route-map ${item.route_map}`;
+    lines.push(line);
+  });
 }
 
 function formatAclEntry(entry, aclType) {
@@ -1268,6 +1459,41 @@ function validateInventory(inventory) {
     validateCliSafe(device.domain_name, `${device.hostname}.domain_name`, errors);
     if (device.hostname && hostnames.has(device.hostname)) errors.push(`hostname 重複: ${device.hostname}`);
     hostnames.add(device.hostname);
+
+    (device.vrfs || []).forEach((vrf, index) => {
+      if (!vrf.name) errors.push(`${device.hostname}.vrfs[${index}].name 必填`);
+      validateCliSafe(vrf.name, `${device.hostname}.vrfs[${index}].name`, errors);
+      validateCliSafe(vrf.rd, `${device.hostname}.vrfs[${index}].rd`, errors);
+      (vrf.route_targets_import || []).forEach((target, targetIndex) => validateCliSafe(target, `${device.hostname}.vrfs[${index}].route_targets_import[${targetIndex}]`, errors));
+      (vrf.route_targets_export || []).forEach((target, targetIndex) => validateCliSafe(target, `${device.hostname}.vrfs[${index}].route_targets_export[${targetIndex}]`, errors));
+    });
+
+    (device.prefix_lists || []).forEach((item, index) => {
+      if (!item.name) errors.push(`${device.hostname}.prefix_lists[${index}].name 必填`);
+      validateCliSafe(item.name, `${device.hostname}.prefix_lists[${index}].name`, errors);
+      if (item.action && !ACL_ACTIONS.has(item.action)) errors.push(`${device.hostname}.prefix_lists[${index}].action 必須是 permit 或 deny`);
+      validatePrefix(item.prefix, `${device.hostname}.prefix_lists[${index}].prefix`, errors);
+      ["sequence", "ge", "le"].forEach((key) => {
+        if (!item[key]) return;
+        const value = Number(item[key]);
+        if (!Number.isInteger(value) || value < 0 || (["ge", "le"].includes(key) && value > 32)) errors.push(`${device.hostname}.prefix_lists[${index}].${key} 必須是 0-32`);
+      });
+    });
+
+    (device.route_maps || []).forEach((item, index) => {
+      if (!item.name) errors.push(`${device.hostname}.route_maps[${index}].name 必填`);
+      validateCliSafe(item.name, `${device.hostname}.route_maps[${index}].name`, errors);
+      if (item.action && !ACL_ACTIONS.has(item.action)) errors.push(`${device.hostname}.route_maps[${index}].action 必須是 permit 或 deny`);
+      const sequence = Number(item.sequence ?? 10);
+      if (!Number.isInteger(sequence) || sequence < 0) errors.push(`${device.hostname}.route_maps[${index}].sequence 必須是 0 或正整數`);
+      (item.match_prefix_lists || []).forEach((name, listIndex) => validateCliSafe(name, `${device.hostname}.route_maps[${index}].match_prefix_lists[${listIndex}]`, errors));
+      if (item.set_local_preference) {
+        const localPreference = Number(item.set_local_preference);
+        if (!Number.isInteger(localPreference) || localPreference < 0) errors.push(`${device.hostname}.route_maps[${index}].set_local_preference 必須是 0 或正整數`);
+      }
+      validateCliSafe(item.set_metric, `${device.hostname}.route_maps[${index}].set_metric`, errors);
+      validateCliSafe(item.set_as_path_prepend, `${device.hostname}.route_maps[${index}].set_as_path_prepend`, errors);
+    });
 
     if (hasSpanningTreeConfig(device.spanning_tree)) {
       if (device.spanning_tree.mode && !STP_MODES.has(device.spanning_tree.mode)) errors.push(`${device.hostname}.spanning_tree.mode 必須是 pvst、rapid-pvst 或 mst`);
@@ -1338,6 +1564,10 @@ function validateInventory(inventory) {
       interfaces.add(iface.name);
       validateCliSafe(iface.description, `${device.hostname}.${iface.name}.description`, errors);
       if (layer === "L2" && ["routed", "loopback"].includes(iface.mode)) errors.push(`${device.hostname}.${iface.name}: L2 設備不允許 ${iface.mode} 介面`);
+      if (iface.vrf) {
+        validateCliSafe(iface.vrf, `${device.hostname}.${iface.name}.vrf`, errors);
+        if (!["routed", "svi", "loopback"].includes(iface.mode)) errors.push(`${device.hostname}.${iface.name}: VRF 只允許 L3 介面模式`);
+      }
       if (iface.address) validatePrefix(iface.address, `${device.hostname}.${iface.name}.address`, errors);
       if (layer === "L2" && iface.nat_role) errors.push(`${device.hostname}.${iface.name}: L2 設備不允許 NAT role`);
       if (iface.nat_role && !NAT_ROLES.has(iface.nat_role)) errors.push(`${device.hostname}.${iface.name}.nat_role 必須是 inside 或 outside`);
@@ -1381,6 +1611,7 @@ function validateInventory(inventory) {
       const prefix = parsePrefixForValidation(route.destination, `${device.hostname}.routing.static[${routeIndex}].destination`, errors);
       if (layer === "L2" && prefix && prefix.length !== 0) errors.push(`${device.hostname}: L2 設備只允許 0.0.0.0/0 作為管理閘道`);
       validateIp(route.next_hop, `${device.hostname}.routing.static[${routeIndex}].next_hop`, errors);
+      validateCliSafe(route.vrf, `${device.hostname}.routing.static[${routeIndex}].vrf`, errors);
     });
 
     if (layer === "L2" && device.routing?.ospf) errors.push(`${device.hostname}: L2 設備不允許 OSPF`);
@@ -1396,6 +1627,7 @@ function validateInventory(inventory) {
       const area = Number(network.area ?? 0);
       if (!Number.isInteger(area) || area < 0) errors.push(`${device.hostname}.routing.ospf.networks[${networkIndex}].area 必須是 0 或正整數`);
     });
+    validateRedistribute(device.routing?.ospf?.redistribute || [], `${device.hostname}.routing.ospf.redistribute`, errors);
 
     if (device.routing?.eigrp) {
       validateAsn(device.routing.eigrp.asn, `${device.hostname}.routing.eigrp.asn`, errors);
@@ -1406,6 +1638,7 @@ function validateInventory(inventory) {
       (device.routing.eigrp.passive_interfaces || []).forEach((name, index) => {
         if (!INTERFACE_NAME_PATTERN.test(name)) errors.push(`${device.hostname}.routing.eigrp.passive_interfaces[${index}] 含非 CLI 安全字元`);
       });
+      validateRedistribute(device.routing.eigrp.redistribute || [], `${device.hostname}.routing.eigrp.redistribute`, errors);
     }
 
     if (device.routing?.bgp) {
@@ -1418,13 +1651,78 @@ function validateInventory(inventory) {
         if (neighbor.update_source && !INTERFACE_NAME_PATTERN.test(neighbor.update_source)) {
           errors.push(`${device.hostname}.routing.bgp.neighbors[${neighborIndex}].update_source 含非 CLI 安全字元`);
         }
+        ["route_map_in", "route_map_out", "prefix_list_in", "prefix_list_out"].forEach((key) => {
+          validateCliSafe(neighbor[key], `${device.hostname}.routing.bgp.neighbors[${neighborIndex}].${key}`, errors);
+        });
+        if (neighbor.send_community && neighbor.send_community !== true && !["standard", "extended", "both"].includes(neighbor.send_community)) {
+          errors.push(`${device.hostname}.routing.bgp.neighbors[${neighborIndex}].send_community 必須是 standard、extended 或 both`);
+        }
       });
       (device.routing.bgp.networks || []).forEach((network, networkIndex) => {
         validatePrefix(network.prefix, `${device.hostname}.routing.bgp.networks[${networkIndex}].prefix`, errors);
       });
+      validateRedistribute(device.routing.bgp.redistribute || [], `${device.hostname}.routing.bgp.redistribute`, errors);
     }
+
+    validateReferences(device, deviceIndex, errors);
   });
   return errors;
+}
+
+function validateReferences(device, deviceIndex, errors) {
+  const vrfNames = namedSet(device.vrfs);
+  const prefixListNames = namedSet(device.prefix_lists);
+  const routeMapNames = namedSet(device.route_maps);
+  const aclNames = namedSet(device.acls);
+  const interfaceNames = namedSet(device.interfaces);
+
+  const requireDefined = (value, knownValues, label, type) => {
+    if (value && !knownValues.has(String(value))) errors.push(`${label} 參照不存在的 ${type}: ${value}`);
+  };
+
+  (device.route_maps || []).forEach((routeMap, routeMapIndex) => {
+    (routeMap.match_prefix_lists || []).forEach((name, listIndex) => {
+      requireDefined(name, prefixListNames, `${device.hostname}.route_maps[${routeMapIndex}].match_prefix_lists[${listIndex}]`, "prefix-list");
+    });
+  });
+
+  (device.interfaces || []).forEach((iface, ifaceIndex) => {
+    requireDefined(iface.vrf, vrfNames, `${device.hostname}.interfaces[${ifaceIndex}].vrf`, "VRF");
+    (iface.access_groups || []).forEach((item, aclIndex) => {
+      requireDefined(item.name, aclNames, `${device.hostname}.interfaces[${ifaceIndex}].access_groups[${aclIndex}].name`, "ACL");
+    });
+  });
+
+  (device.routing?.static || []).forEach((route, routeIndex) => {
+    requireDefined(route.vrf, vrfNames, `${device.hostname}.routing.static[${routeIndex}].vrf`, "VRF");
+  });
+
+  (device.routing?.eigrp?.passive_interfaces || []).forEach((name, index) => {
+    requireDefined(name, interfaceNames, `${device.hostname}.routing.eigrp.passive_interfaces[${index}]`, "interface");
+  });
+
+  (device.routing?.bgp?.neighbors || []).forEach((neighbor, neighborIndex) => {
+    requireDefined(neighbor.update_source, interfaceNames, `${device.hostname}.routing.bgp.neighbors[${neighborIndex}].update_source`, "interface");
+    requireDefined(neighbor.route_map_in, routeMapNames, `${device.hostname}.routing.bgp.neighbors[${neighborIndex}].route_map_in`, "route-map");
+    requireDefined(neighbor.route_map_out, routeMapNames, `${device.hostname}.routing.bgp.neighbors[${neighborIndex}].route_map_out`, "route-map");
+    requireDefined(neighbor.prefix_list_in, prefixListNames, `${device.hostname}.routing.bgp.neighbors[${neighborIndex}].prefix_list_in`, "prefix-list");
+    requireDefined(neighbor.prefix_list_out, prefixListNames, `${device.hostname}.routing.bgp.neighbors[${neighborIndex}].prefix_list_out`, "prefix-list");
+  });
+
+  ["ospf", "eigrp", "bgp"].forEach((protocol) => {
+    (device.routing?.[protocol]?.redistribute || []).forEach((item, index) => {
+      requireDefined(item.route_map, routeMapNames, `${device.hostname}.routing.${protocol}.redistribute[${index}].route_map`, "route-map");
+    });
+  });
+
+  (device.nat?.inside_source || []).forEach((item, index) => {
+    requireDefined(item.acl, aclNames, `${device.hostname}.nat.inside_source[${index}].acl`, "ACL");
+    requireDefined(item.interface, interfaceNames, `${device.hostname}.nat.inside_source[${index}].interface`, "interface");
+  });
+}
+
+function namedSet(items) {
+  return new Set((items || []).map((item) => item.name).filter(Boolean).map(String));
 }
 
 function validateCliSafe(value, label, errors) {
@@ -1474,6 +1772,15 @@ function validateAclEndpoint(value, label, errors) {
 function validateVlanId(value, label, errors) {
   const vlanId = Number(value);
   if (!Number.isInteger(vlanId) || vlanId < 1 || vlanId > 4094) errors.push(`${label} 必須是 1-4094`);
+}
+
+function validateRedistribute(items, label, errors) {
+  items.forEach((item, index) => {
+    if (!item.source) errors.push(`${label}[${index}].source 必填`);
+    validateCliSafe(item.source, `${label}[${index}].source`, errors);
+    validateCliSafe(item.metric, `${label}[${index}].metric`, errors);
+    validateCliSafe(item.route_map, `${label}[${index}].route_map`, errors);
+  });
 }
 
 function validateAsn(value, label, errors) {
@@ -1572,6 +1879,25 @@ function splitList(value) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function redistributeSources(items) {
+  return (items || []).map((item) => item.source).filter(Boolean).join(",");
+}
+
+function setRedistribute(protocol, sourcesValue, routeMapValue = "", metricValue = "", subnets = false) {
+  const sources = splitList(sourcesValue);
+  if (!sources.length) {
+    delete protocol.redistribute;
+    return;
+  }
+  protocol.redistribute = sources.map((source) => {
+    const item = { source };
+    if (routeMapValue) item.route_map = routeMapValue.trim();
+    if (metricValue) item.metric = metricValue.trim();
+    if (subnets) item.subnets = true;
+    return item;
+  });
 }
 
 function normalizeExcludedAddress(value) {
@@ -1803,6 +2129,18 @@ elements.ospfRouterId.addEventListener("input", () => {
   renderOutput();
 });
 
+elements.ospfRedistributeSources.addEventListener("input", () => {
+  sanitizeTargetInput(elements.ospfRedistributeSources);
+  setRedistribute(currentDevice().routing.ospf, elements.ospfRedistributeSources.value, elements.ospfRedistributeRouteMap.value, "", true);
+  renderOutput();
+});
+
+elements.ospfRedistributeRouteMap.addEventListener("input", () => {
+  sanitizeTargetInput(elements.ospfRedistributeRouteMap);
+  setRedistribute(currentDevice().routing.ospf, elements.ospfRedistributeSources.value, elements.ospfRedistributeRouteMap.value, "", true);
+  renderOutput();
+});
+
 elements.addOspfNetworkBtn.addEventListener("click", () => {
   const device = currentDevice();
   device.routing ||= {};
@@ -1844,6 +2182,24 @@ elements.eigrpNoAutoSummary.addEventListener("change", () => {
   renderOutput();
 });
 
+elements.eigrpRedistributeSources.addEventListener("input", () => {
+  sanitizeTargetInput(elements.eigrpRedistributeSources);
+  setRedistribute(currentDevice().routing.eigrp, elements.eigrpRedistributeSources.value, elements.eigrpRedistributeRouteMap.value, elements.eigrpRedistributeMetric.value);
+  renderOutput();
+});
+
+elements.eigrpRedistributeMetric.addEventListener("input", () => {
+  sanitizeTargetInput(elements.eigrpRedistributeMetric);
+  setRedistribute(currentDevice().routing.eigrp, elements.eigrpRedistributeSources.value, elements.eigrpRedistributeRouteMap.value, elements.eigrpRedistributeMetric.value);
+  renderOutput();
+});
+
+elements.eigrpRedistributeRouteMap.addEventListener("input", () => {
+  sanitizeTargetInput(elements.eigrpRedistributeRouteMap);
+  setRedistribute(currentDevice().routing.eigrp, elements.eigrpRedistributeSources.value, elements.eigrpRedistributeRouteMap.value, elements.eigrpRedistributeMetric.value);
+  renderOutput();
+});
+
 elements.addEigrpNetworkBtn.addEventListener("click", () => {
   const device = currentDevice();
   device.routing ||= {};
@@ -1874,6 +2230,18 @@ elements.bgpRouterId.addEventListener("input", () => {
   renderOutput();
 });
 
+elements.bgpRedistributeSources.addEventListener("input", () => {
+  sanitizeTargetInput(elements.bgpRedistributeSources);
+  setRedistribute(currentDevice().routing.bgp, elements.bgpRedistributeSources.value, elements.bgpRedistributeRouteMap.value);
+  renderOutput();
+});
+
+elements.bgpRedistributeRouteMap.addEventListener("input", () => {
+  sanitizeTargetInput(elements.bgpRedistributeRouteMap);
+  setRedistribute(currentDevice().routing.bgp, elements.bgpRedistributeSources.value, elements.bgpRedistributeRouteMap.value);
+  renderOutput();
+});
+
 elements.addBgpNeighborBtn.addEventListener("click", () => {
   const device = currentDevice();
   device.routing ||= {};
@@ -1887,6 +2255,27 @@ elements.addBgpNetworkBtn.addEventListener("click", () => {
   device.routing ||= {};
   device.routing.bgp ||= { asn: 65001, router_id: "", neighbors: [], networks: [] };
   device.routing.bgp.networks.push({ prefix: "203.0.113.0/30" });
+  render();
+});
+
+elements.addVrfBtn.addEventListener("click", () => {
+  const device = currentDevice();
+  device.vrfs ||= [];
+  device.vrfs.push({ name: `VRF-${device.vrfs.length + 1}`, rd: "65001:1", route_targets_import: ["65001:1"], route_targets_export: ["65001:1"] });
+  render();
+});
+
+elements.addPrefixListBtn.addEventListener("click", () => {
+  const device = currentDevice();
+  device.prefix_lists ||= [];
+  device.prefix_lists.push({ name: `PL-${device.prefix_lists.length + 1}`, sequence: 10, action: "permit", prefix: "10.0.0.0/8" });
+  render();
+});
+
+elements.addRouteMapBtn.addEventListener("click", () => {
+  const device = currentDevice();
+  device.route_maps ||= [];
+  device.route_maps.push({ name: `RM-${device.route_maps.length + 1}`, sequence: 10, action: "permit", match_prefix_lists: [] });
   render();
 });
 

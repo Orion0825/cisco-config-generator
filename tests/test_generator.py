@@ -60,6 +60,7 @@ class GeneratorTest(unittest.TestCase):
                 {
                     "hostname": "EDGE-R1",
                     "device_layer": "L3",
+                    "interfaces": [{"name": "GigabitEthernet0/1", "mode": "routed", "address": "10.10.0.1/30"}],
                     "routing": {
                         "eigrp": {
                             "asn": 100,
@@ -195,6 +196,105 @@ class GeneratorTest(unittest.TestCase):
         self.assertIn("ip helper-address 10.10.10.10", rendered)
         self.assertIn("channel-group 1 mode active", rendered)
         self.assertIn("switchport port-security maximum 2", rendered)
+
+    def test_render_ccie_policy_features(self):
+        inventory = {
+            "devices": [
+                {
+                    "hostname": "PE1",
+                    "device_layer": "L3",
+                    "vrfs": [
+                        {
+                            "name": "CUST-A",
+                            "rd": "65001:10",
+                            "route_targets_import": ["65001:10"],
+                            "route_targets_export": ["65001:10"],
+                        }
+                    ],
+                    "prefix_lists": [{"name": "PL-CUST-A", "sequence": 10, "action": "permit", "prefix": "10.10.0.0/16", "ge": 24, "le": 32}],
+                    "route_maps": [
+                        {
+                            "name": "RM-CUST-A-OUT",
+                            "sequence": 10,
+                            "action": "permit",
+                            "match_prefix_lists": ["PL-CUST-A"],
+                            "set_local_preference": 200,
+                            "set_as_path_prepend": "65001 65001",
+                        }
+                    ],
+                    "interfaces": [
+                        {"name": "GigabitEthernet0/0", "mode": "routed", "address": "10.10.10.1/24", "vrf": "CUST-A"}
+                    ],
+                    "routing": {
+                        "static": [{"vrf": "CUST-A", "destination": "0.0.0.0/0", "next_hop": "10.10.10.254"}],
+                        "ospf": {"process_id": 10, "redistribute": [{"source": "connected", "subnets": True, "route_map": "RM-CUST-A-OUT"}]},
+                        "bgp": {
+                            "asn": 65001,
+                            "neighbors": [
+                                {
+                                    "address": "192.0.2.1",
+                                    "remote_as": 65002,
+                                    "route_map_out": "RM-CUST-A-OUT",
+                                    "prefix_list_in": "PL-CUST-A",
+                                    "next_hop_self": True,
+                                    "send_community": "both",
+                                    "soft_reconfiguration": True,
+                                }
+                            ],
+                            "redistribute": [{"source": "connected", "route_map": "RM-CUST-A-OUT"}],
+                        },
+                    },
+                }
+            ]
+        }
+
+        rendered = render_inventory(inventory)["PE1.cfg"]
+
+        self.assertIn("ip vrf CUST-A", rendered)
+        self.assertIn(" route-target import 65001:10", rendered)
+        self.assertIn("ip prefix-list PL-CUST-A seq 10 permit 10.10.0.0/16 ge 24 le 32", rendered)
+        self.assertIn("route-map RM-CUST-A-OUT permit 10", rendered)
+        self.assertIn(" match ip address prefix-list PL-CUST-A", rendered)
+        self.assertIn(" vrf forwarding CUST-A", rendered)
+        self.assertIn("ip route vrf CUST-A 0.0.0.0 0.0.0.0 10.10.10.254", rendered)
+        self.assertIn(" redistribute connected subnets route-map RM-CUST-A-OUT", rendered)
+        self.assertIn(" neighbor 192.0.2.1 next-hop-self", rendered)
+        self.assertIn(" neighbor 192.0.2.1 route-map RM-CUST-A-OUT out", rendered)
+        self.assertIn(" neighbor 192.0.2.1 prefix-list PL-CUST-A in", rendered)
+        self.assertIn(" neighbor 192.0.2.1 send-community both", rendered)
+
+    def test_validate_inventory_rejects_missing_policy_references(self):
+        inventory = {
+            "devices": [
+                {
+                    "hostname": "PE1",
+                    "interfaces": [{"name": "Vlan10", "mode": "svi", "address": "10.10.10.1/24", "vrf": "MISSING-VRF"}],
+                    "route_maps": [{"name": "RM-OUT", "match_prefix_lists": ["MISSING-PL"]}],
+                    "routing": {
+                        "static": [{"vrf": "MISSING-VRF", "destination": "0.0.0.0/0", "next_hop": "10.10.10.254"}],
+                        "bgp": {
+                            "asn": 65001,
+                            "neighbors": [
+                                {
+                                    "address": "192.0.2.1",
+                                    "remote_as": 65002,
+                                    "route_map_out": "MISSING-RM",
+                                    "prefix_list_in": "MISSING-PL",
+                                }
+                            ],
+                        },
+                    },
+                }
+            ]
+        }
+
+        with self.assertRaises(InventoryError) as error:
+            validate_inventory(inventory)
+
+        message = str(error.exception)
+        self.assertIn("references undefined VRF", message)
+        self.assertIn("references undefined prefix-list", message)
+        self.assertIn("references undefined route-map", message)
 
 
 if __name__ == "__main__":

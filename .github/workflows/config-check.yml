@@ -1,0 +1,31 @@
+name: Config Check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  configgen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -p 'test*.py'
+
+      - name: Verify generated configs
+        run: python -m configgen --check
+
+      - name: Upload generated configs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-configs
+          path: generated-configs/

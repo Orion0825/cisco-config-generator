@@ -9,15 +9,26 @@
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <div>
-          <h1>Cisco Config Generator</h1>
-          <p id="statusText">尚未產生設定檔</p>
+        <div class="brand-block">
+          <div class="brand-mark" aria-hidden="true">CG</div>
+          <div>
+            <h1>Cisco Config Generator</h1>
+            <p id="statusText">尚未產生設定檔</p>
+          </div>
         </div>
-        <div class="toolbar">
-          <input id="fileInput" type="file" accept="application/json,.json" hidden>
-          <button id="importBtn" type="button">匯入 JSON</button>
-          <button id="exportBtn" type="button">匯出 JSON</button>
-          <button id="addDeviceBtn" type="button">新增設備</button>
+        <div class="topbar-actions">
+          <div class="quick-stats" aria-label="Inventory summary">
+            <span><strong id="statDevices">0</strong><small>設備</small></span>
+            <span><strong id="statL2">0</strong><small>L2</small></span>
+            <span><strong id="statL3">0</strong><small>L3</small></span>
+            <span><strong id="statRouting">0</strong><small>路由</small></span>
+          </div>
+          <div class="toolbar">
+            <input id="fileInput" type="file" accept="application/json,.json" hidden>
+            <button id="importBtn" type="button">匯入 JSON</button>
+            <button id="exportBtn" type="button">匯出 JSON</button>
+            <button id="addDeviceBtn" type="button">新增設備</button>
+          </div>
         </div>
       </header>
 

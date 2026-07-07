@@ -25,7 +25,9 @@
 body {
   margin: 0;
   min-width: 320px;
-  background: var(--bg);
+  background:
+    linear-gradient(180deg, #edf4f6 0, var(--bg) 220px),
+    var(--bg);
   color: var(--text);
   font-family: var(--sans);
   letter-spacing: 0;
@@ -47,10 +49,12 @@ button {
   color: var(--text);
   cursor: pointer;
   white-space: nowrap;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
 }
 
 button:hover {
   border-color: var(--accent);
+  transform: translateY(-1px);
 }
 
 button:focus-visible,
@@ -94,6 +98,10 @@ select {
   padding: 6px 8px;
 }
 
+input::placeholder {
+  color: #9aa7af;
+}
+
 textarea {
   resize: none;
 }
@@ -109,10 +117,31 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 18px;
+  padding: 16px 18px;
   border-bottom: 1px solid var(--line);
-  background: var(--surface);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(12px);
   box-shadow: 0 1px 0 rgba(22, 33, 42, 0.03);
+}
+
+.brand-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 240px;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: #102a33;
+  color: #bff7e5;
+  font-weight: 800;
+  letter-spacing: 0;
+  box-shadow: inset 0 -3px 0 rgba(255, 255, 255, 0.08);
 }
 
 .topbar h1 {
@@ -125,6 +154,45 @@ textarea {
   margin: 4px 0 0;
   color: var(--muted);
   font-size: 13px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.quick-stats {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7fafb;
+}
+
+.quick-stats span {
+  min-width: 58px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #fff;
+  text-align: center;
+}
+
+.quick-stats strong {
+  display: block;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.quick-stats small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
 }
 
 .toolbar {
@@ -188,8 +256,8 @@ textarea {
   width: 100%;
   display: grid;
   grid-template-columns: 1fr;
-  gap: 2px;
-  padding: 9px 10px;
+  gap: 6px;
+  padding: 10px;
   margin-bottom: 6px;
   text-align: left;
   border-radius: 6px;
@@ -202,17 +270,81 @@ textarea {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
-.device-item span:first-child {
+.device-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.device-title > span {
   overflow: hidden;
   text-overflow: ellipsis;
   font-weight: 700;
 }
 
-.device-item span:last-child {
+.device-meta {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--muted);
   font-size: 12px;
+}
+
+.layer-chip,
+.protocol-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.layer-chip {
+  padding: 0 7px;
+}
+
+.layer-chip.l2 {
+  background: #eef4ff;
+  color: var(--blue);
+}
+
+.layer-chip.l3 {
+  background: #e9f6ef;
+  color: var(--accent-strong);
+}
+
+.device-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 20px;
+}
+
+.protocol-badge {
+  padding: 0 6px;
+  border: 1px solid transparent;
+}
+
+.protocol-badge.static,
+.protocol-badge.gateway {
+  border-color: #bad2ec;
+  background: #f3f8ff;
+  color: var(--blue);
+}
+
+.protocol-badge.ospf,
+.protocol-badge.eigrp {
+  border-color: #b9dfd6;
+  background: #f0faf7;
+  color: var(--accent-strong);
+}
+
+.protocol-badge.bgp {
+  border-color: #f0cfba;
+  background: #fff6ef;
+  color: var(--orange);
 }
 
 .side-actions,
@@ -268,6 +400,7 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
+  box-shadow: 0 1px 0 rgba(22, 33, 42, 0.03);
 }
 
 .section-block:hover {
@@ -311,6 +444,7 @@ textarea {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 10px;
+  min-height: 34px;
 }
 
 .section-heading.compact {
@@ -439,9 +573,10 @@ label select {
   font-family: var(--mono);
   font-size: 12px;
   line-height: 1.5;
-  background: #101820;
-  color: #d9f0e8;
+  background: #0f1820;
+  color: #ddf6ec;
   border-color: #22323d;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
 .messages {
@@ -477,6 +612,24 @@ label select {
   .topbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .brand-block {
+    min-width: 0;
+  }
+
+  .topbar-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .quick-stats {
+    width: 100%;
+  }
+
+  .quick-stats span {
+    flex: 1;
+    min-width: 0;
   }
 
   .toolbar {

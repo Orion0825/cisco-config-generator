@@ -112,6 +112,10 @@ let activeTab = "device";
 
 const elements = {
   statusText: document.querySelector("#statusText"),
+  statDevices: document.querySelector("#statDevices"),
+  statL2: document.querySelector("#statL2"),
+  statL3: document.querySelector("#statL3"),
+  statRouting: document.querySelector("#statRouting"),
   fileInput: document.querySelector("#fileInput"),
   importBtn: document.querySelector("#importBtn"),
   exportBtn: document.querySelector("#exportBtn"),
@@ -217,9 +221,21 @@ function render() {
     selectedDeviceIndex = 0;
   }
   selectedDeviceIndex = Math.min(selectedDeviceIndex, state.devices.length - 1);
+  renderSummary();
   renderDeviceList();
   renderForms();
   renderOutput();
+}
+
+function renderSummary() {
+  const devices = state.devices || [];
+  const l2Count = devices.filter((device) => normalizedDeviceLayer(device) === "L2").length;
+  const l3Count = devices.length - l2Count;
+  const routingCount = devices.reduce((total, device) => total + enabledDynamicProtocols(device).length, 0);
+  elements.statDevices.textContent = String(devices.length);
+  elements.statL2.textContent = String(l2Count);
+  elements.statL3.textContent = String(l3Count);
+  elements.statRouting.textContent = String(routingCount);
 }
 
 function renderDeviceList() {
@@ -230,7 +246,16 @@ function renderDeviceList() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `device-item${index === selectedDeviceIndex ? " active" : ""}`;
-    button.innerHTML = `<span>${escapeHtml(device.hostname || "未命名設備")}</span><span>${escapeHtml(normalizedDeviceLayer(device))} · ${escapeHtml(device.role || device.platform || "ios")}</span>`;
+    const layer = normalizedDeviceLayer(device);
+    const tags = deviceTags(device);
+    button.innerHTML = `
+      <span class="device-title">
+        <span>${escapeHtml(device.hostname || "未命名設備")}</span>
+        <strong class="layer-chip ${layer.toLowerCase()}">${escapeHtml(layer)}</strong>
+      </span>
+      <span class="device-meta">${escapeHtml(device.role || device.platform || "ios")}</span>
+      <span class="device-badges">${tags.map((tag) => `<span class="protocol-badge ${tag.toLowerCase()}">${escapeHtml(tag)}</span>`).join("")}</span>
+    `;
     button.addEventListener("click", () => {
       selectedDeviceIndex = index;
       selectedOutputFile = "";
@@ -238,6 +263,19 @@ function renderDeviceList() {
     });
     elements.deviceList.appendChild(button);
   });
+}
+
+function enabledDynamicProtocols(device) {
+  const routing = device.routing || {};
+  return ["ospf", "eigrp", "bgp"].filter((protocol) => routing[protocol]);
+}
+
+function deviceTags(device) {
+  const routing = device.routing || {};
+  const tags = [];
+  if ((routing.static || []).length) tags.push(normalizedDeviceLayer(device) === "L2" ? "Gateway" : "Static");
+  enabledDynamicProtocols(device).forEach((protocol) => tags.push(protocol.toUpperCase()));
+  return tags;
 }
 
 function renderForms() {

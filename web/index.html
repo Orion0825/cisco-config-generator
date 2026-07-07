@@ -90,7 +90,7 @@
               <div id="interfaceRows" class="rows"></div>
             </section>
 
-            <section id="staticRouteSection" class="section-block">
+            <section id="staticRouteSection" class="section-block routing-card routing-static">
               <div class="section-heading">
                 <h2 id="staticRouteTitle">Static Route</h2>
                 <button id="addStaticRouteBtn" type="button">新增路由</button>
@@ -98,7 +98,7 @@
               <div id="staticRouteRows" class="rows"></div>
             </section>
 
-            <section id="ospfSection" class="section-block">
+            <section id="ospfSection" class="section-block routing-card routing-igp">
               <div class="section-heading">
                 <h2>OSPF</h2>
                 <label class="switch">
@@ -122,6 +122,73 @@
                   <button id="addOspfNetworkBtn" type="button">新增 Network</button>
                 </div>
                 <div id="ospfNetworkRows" class="rows"></div>
+              </div>
+            </section>
+
+            <section id="eigrpSection" class="section-block routing-card routing-igp">
+              <div class="section-heading">
+                <h2>EIGRP</h2>
+                <label class="switch">
+                  <input id="eigrpEnabled" type="checkbox">
+                  <span>啟用</span>
+                </label>
+              </div>
+              <div id="eigrpFields" class="protocol-fields">
+                <div class="field-grid">
+                  <label>
+                    ASN
+                    <input id="eigrpAsn" type="number" min="1" value="100">
+                  </label>
+                  <label>
+                    Router ID
+                    <input id="eigrpRouterId" autocomplete="off">
+                  </label>
+                  <label>
+                    Passive Interfaces
+                    <input id="eigrpPassiveInterfaces" autocomplete="off" placeholder="GigabitEthernet0/1,GigabitEthernet0/2">
+                  </label>
+                  <label class="switch field-switch">
+                    <input id="eigrpNoAutoSummary" type="checkbox">
+                    <span>No Auto Summary</span>
+                  </label>
+                </div>
+                <div class="section-heading compact">
+                  <h3>Network</h3>
+                  <button id="addEigrpNetworkBtn" type="button">新增 Network</button>
+                </div>
+                <div id="eigrpNetworkRows" class="rows"></div>
+              </div>
+            </section>
+
+            <section id="bgpSection" class="section-block routing-card routing-egp">
+              <div class="section-heading">
+                <h2>BGP</h2>
+                <label class="switch">
+                  <input id="bgpEnabled" type="checkbox">
+                  <span>啟用</span>
+                </label>
+              </div>
+              <div id="bgpFields" class="protocol-fields">
+                <div class="field-grid">
+                  <label>
+                    Local ASN
+                    <input id="bgpAsn" type="number" min="1" value="65001">
+                  </label>
+                  <label>
+                    Router ID
+                    <input id="bgpRouterId" autocomplete="off">
+                  </label>
+                </div>
+                <div class="section-heading compact">
+                  <h3>Neighbor</h3>
+                  <button id="addBgpNeighborBtn" type="button">新增 Neighbor</button>
+                </div>
+                <div id="bgpNeighborRows" class="rows"></div>
+                <div class="section-heading compact">
+                  <h3>Network</h3>
+                  <button id="addBgpNetworkBtn" type="button">新增 Network</button>
+                </div>
+                <div id="bgpNetworkRows" class="rows"></div>
               </div>
             </section>
           </form>

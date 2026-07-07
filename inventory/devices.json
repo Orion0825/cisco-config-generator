@@ -76,6 +76,33 @@
               "area": 0
             }
           ]
+        },
+        "eigrp": {
+          "asn": 100,
+          "router_id": "10.255.0.1",
+          "networks": [
+            {
+              "prefix": "10.255.0.1/32"
+            }
+          ],
+          "passive_interfaces": ["GigabitEthernet0/1"],
+          "no_auto_summary": true
+        },
+        "bgp": {
+          "asn": 65001,
+          "router_id": "10.255.0.1",
+          "neighbors": [
+            {
+              "address": "203.0.113.1",
+              "remote_as": 65000,
+              "description": "ISP edge"
+            }
+          ],
+          "networks": [
+            {
+              "prefix": "203.0.113.0/30"
+            }
+          ]
         }
       }
     },

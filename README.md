@@ -40,6 +40,8 @@ tests/                 單元測試
 - loopback
 - IPv4 static route
 - 基本 OSPF network statement
+- 基本 EIGRP network、passive-interface、no auto-summary
+- 基本 BGP neighbor、remote-as、router-id、network statement
 
 密碼或敏感資料可以用環境變數引用，例如 `${CISCO_NETADMIN_SECRET}`。如果環境變數沒有設定，產生的 config 會顯示 `__MISSING_ENV_CISCO_NETADMIN_SECRET__`，方便在部署前發現問題。
 
@@ -57,7 +59,39 @@ tests/                 單元測試
 "device_layer": "L3"
 ```
 
-L2 設備會把 `0.0.0.0/0` static route 產生成 `ip default-gateway`，並禁止 OSPF、routed interface、loopback interface。L3 設備則會照一般 router / L3 switch 方式產生 static route 與 OSPF。
+L2 設備會把 `0.0.0.0/0` static route 產生成 `ip default-gateway`，並禁止 OSPF、EIGRP、BGP、routed interface、loopback interface。L3 設備則會照一般 router / L3 switch 方式產生 static route 與動態路由。
+
+### 路由功能分類
+
+`routing` 底下會依路由類型分類：
+
+```json
+"routing": {
+  "static": [
+    { "destination": "0.0.0.0/0", "next_hop": "203.0.113.1" }
+  ],
+  "ospf": {
+    "process_id": 10,
+    "router_id": "10.255.0.1",
+    "networks": [{ "prefix": "10.255.0.1/32", "area": 0 }]
+  },
+  "eigrp": {
+    "asn": 100,
+    "router_id": "10.255.0.1",
+    "networks": [{ "prefix": "10.255.0.1/32" }],
+    "passive_interfaces": ["GigabitEthernet0/1"],
+    "no_auto_summary": true
+  },
+  "bgp": {
+    "asn": 65001,
+    "router_id": "10.255.0.1",
+    "neighbors": [
+      { "address": "203.0.113.1", "remote_as": 65000, "description": "ISP edge" }
+    ],
+    "networks": [{ "prefix": "203.0.113.0/30" }]
+  }
+}
+```
 
 ### 輸入限制
 
@@ -83,7 +117,7 @@ python -m configgen --check
 web/index.html
 ```
 
-打開後可以直接新增設備、編輯 VLAN/interface/static route/OSPF、匯入或匯出 `devices.json`，並複製或下載產生後的 `.cfg`。
+打開後可以直接新增設備、編輯 VLAN/interface/static route/OSPF/EIGRP/BGP、匯入或匯出 `devices.json`，並複製或下載產生後的 `.cfg`。
 
 GUI 是純前端靜態檔案，不需要 npm、Flask 或其他後端服務。若要和 CLI 流程接軌，建議在 GUI 匯出 JSON 後覆蓋 `inventory/devices.json`，再執行：
 
@@ -119,4 +153,4 @@ git push
 
 - 不要直接手改 `generated-configs/*.cfg`，應該改 `inventory/devices.json` 後重新產生。
 - 正式環境部署前，請先在 lab 或維護時段驗證 config。
-- 目前產生器主要針對 IPv4 與常見 IOS 語法，若要支援 NX-OS、IOS XE 特定功能或更完整的 BGP/ACL/QoS，可以再擴充資料模型與產生邏輯。
+- 目前產生器主要針對 IPv4 與常見 IOS 語法，若要支援 NX-OS、IOS XE 特定功能或更完整的 ACL/NAT/QoS/VRF，可以再擴充資料模型與產生邏輯。

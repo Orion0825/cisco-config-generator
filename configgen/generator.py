@@ -178,7 +178,42 @@ def render_routing(lines: list[str], routing: dict[str, Any], device_layer: str 
                 raise InventoryError("only IPv4 OSPF networks are supported right now")
             lines.append(f" network {prefix.network_address} {wildcard_mask(prefix)} area {network.get('area', 0)}")
 
-    if routing.get("static") or ospf:
+    eigrp = routing.get("eigrp")
+    if eigrp:
+        lines.append("!")
+        lines.append(f"router eigrp {int(eigrp['asn'])}")
+        if eigrp.get("router_id"):
+            lines.append(f" eigrp router-id {eigrp['router_id']}")
+        for network in eigrp.get("networks", []):
+            prefix = ipaddress.ip_network(network["prefix"], strict=False)
+            if prefix.version != 4:
+                raise InventoryError("only IPv4 EIGRP networks are supported right now")
+            lines.append(f" network {prefix.network_address} {wildcard_mask(prefix)}")
+        for interface in eigrp.get("passive_interfaces", []):
+            lines.append(f" passive-interface {interface}")
+        if eigrp.get("no_auto_summary", True):
+            lines.append(" no auto-summary")
+
+    bgp = routing.get("bgp")
+    if bgp:
+        lines.append("!")
+        lines.append(f"router bgp {int(bgp['asn'])}")
+        if bgp.get("router_id"):
+            lines.append(f" bgp router-id {bgp['router_id']}")
+        for neighbor in bgp.get("neighbors", []):
+            address = neighbor["address"]
+            lines.append(f" neighbor {address} remote-as {int(neighbor['remote_as'])}")
+            if neighbor.get("description"):
+                lines.append(f" neighbor {address} description {neighbor['description']}")
+            if neighbor.get("update_source"):
+                lines.append(f" neighbor {address} update-source {neighbor['update_source']}")
+        for network in bgp.get("networks", []):
+            prefix = ipaddress.ip_network(network["prefix"], strict=False)
+            if prefix.version != 4:
+                raise InventoryError("only IPv4 BGP networks are supported right now")
+            lines.append(f" network {prefix.network_address} mask {prefix.netmask}")
+
+    if routing.get("static") or ospf or eigrp or bgp:
         lines.append("!")
 
 
@@ -325,10 +360,12 @@ def validate_routing(device: dict[str, Any], device_index: int) -> list[str]:
         except (KeyError, ValueError):
             errors.append(f"devices[{device_index}].routing.static[{index}].next_hop must be a valid IP")
 
+    for protocol in ("ospf", "eigrp", "bgp"):
+        if device_layer == "L2" and routing.get(protocol):
+            errors.append(f"devices[{device_index}].routing.{protocol} is not allowed on L2 devices")
+
     ospf = routing.get("ospf")
     if ospf:
-        if device_layer == "L2":
-            errors.append(f"devices[{device_index}].routing.ospf is not allowed on L2 devices")
         try:
             process_id = int(ospf.get("process_id", 1))
             if process_id < 1:
@@ -351,6 +388,47 @@ def validate_routing(device: dict[str, Any], device_index: int) -> list[str]:
                     errors.append(f"devices[{device_index}].routing.ospf.networks[{index}].area must be 0 or greater")
             except (TypeError, ValueError):
                 errors.append(f"devices[{device_index}].routing.ospf.networks[{index}].area must be an integer")
+
+    eigrp = routing.get("eigrp")
+    if eigrp:
+        errors.extend(validate_asn(eigrp.get("asn"), f"devices[{device_index}].routing.eigrp.asn"))
+        if eigrp.get("router_id"):
+            try:
+                ipaddress.ip_address(eigrp["router_id"])
+            except ValueError:
+                errors.append(f"devices[{device_index}].routing.eigrp.router_id must be a valid IP")
+        for index, network in enumerate(eigrp.get("networks", [])):
+            try:
+                ipaddress.ip_network(network["prefix"], strict=False)
+            except (KeyError, ValueError):
+                errors.append(f"devices[{device_index}].routing.eigrp.networks[{index}].prefix must be a valid prefix")
+        for index, interface in enumerate(eigrp.get("passive_interfaces", [])):
+            if not INTERFACE_NAME_PATTERN.fullmatch(str(interface)):
+                errors.append(f"devices[{device_index}].routing.eigrp.passive_interfaces[{index}] contains invalid CLI characters")
+
+    bgp = routing.get("bgp")
+    if bgp:
+        errors.extend(validate_asn(bgp.get("asn"), f"devices[{device_index}].routing.bgp.asn"))
+        if bgp.get("router_id"):
+            try:
+                ipaddress.ip_address(bgp["router_id"])
+            except ValueError:
+                errors.append(f"devices[{device_index}].routing.bgp.router_id must be a valid IP")
+        for index, neighbor in enumerate(bgp.get("neighbors", [])):
+            try:
+                ipaddress.ip_address(neighbor["address"])
+            except (KeyError, ValueError):
+                errors.append(f"devices[{device_index}].routing.bgp.neighbors[{index}].address must be a valid IP")
+            errors.extend(validate_asn(neighbor.get("remote_as"), f"devices[{device_index}].routing.bgp.neighbors[{index}].remote_as"))
+            if neighbor.get("description"):
+                errors.extend(validate_cli_safe(str(neighbor["description"]), f"devices[{device_index}].routing.bgp.neighbors[{index}].description"))
+            if neighbor.get("update_source") and not INTERFACE_NAME_PATTERN.fullmatch(str(neighbor["update_source"])):
+                errors.append(f"devices[{device_index}].routing.bgp.neighbors[{index}].update_source contains invalid CLI characters")
+        for index, network in enumerate(bgp.get("networks", [])):
+            try:
+                ipaddress.ip_network(network["prefix"], strict=False)
+            except (KeyError, ValueError):
+                errors.append(f"devices[{device_index}].routing.bgp.networks[{index}].prefix must be a valid prefix")
     return errors
 
 
@@ -390,6 +468,16 @@ def validate_vlan_number(value: Any, field: str) -> list[str]:
         return [f"{field} must contain VLAN integers"]
     if vlan_id < 1 or vlan_id > 4094:
         return [f"{field} VLAN {vlan_id} must be 1-4094"]
+    return []
+
+
+def validate_asn(value: Any, field: str) -> list[str]:
+    try:
+        asn = int(value)
+    except (TypeError, ValueError):
+        return [f"{field} must be an integer"]
+    if asn < 1 or asn > 4294967295:
+        return [f"{field} must be 1-4294967295"]
     return []
 
 

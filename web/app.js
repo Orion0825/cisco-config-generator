@@ -43,6 +43,19 @@ const sampleInventory = {
           router_id: "10.255.0.1",
           networks: [{ prefix: "10.255.0.1/32", area: 0 }],
         },
+        eigrp: {
+          asn: 100,
+          router_id: "10.255.0.1",
+          networks: [{ prefix: "10.255.0.1/32" }],
+          passive_interfaces: ["GigabitEthernet0/1"],
+          no_auto_summary: true,
+        },
+        bgp: {
+          asn: 65001,
+          router_id: "10.255.0.1",
+          neighbors: [{ address: "203.0.113.1", remote_as: 65000, description: "ISP edge" }],
+          networks: [{ prefix: "203.0.113.0/30" }],
+        },
       },
     },
     {
@@ -122,10 +135,28 @@ const elements = {
   ospfProcessId: document.querySelector("#ospfProcessId"),
   ospfRouterId: document.querySelector("#ospfRouterId"),
   ospfNetworkRows: document.querySelector("#ospfNetworkRows"),
+  eigrpSection: document.querySelector("#eigrpSection"),
+  eigrpEnabled: document.querySelector("#eigrpEnabled"),
+  eigrpFields: document.querySelector("#eigrpFields"),
+  eigrpAsn: document.querySelector("#eigrpAsn"),
+  eigrpRouterId: document.querySelector("#eigrpRouterId"),
+  eigrpPassiveInterfaces: document.querySelector("#eigrpPassiveInterfaces"),
+  eigrpNoAutoSummary: document.querySelector("#eigrpNoAutoSummary"),
+  eigrpNetworkRows: document.querySelector("#eigrpNetworkRows"),
+  bgpSection: document.querySelector("#bgpSection"),
+  bgpEnabled: document.querySelector("#bgpEnabled"),
+  bgpFields: document.querySelector("#bgpFields"),
+  bgpAsn: document.querySelector("#bgpAsn"),
+  bgpRouterId: document.querySelector("#bgpRouterId"),
+  bgpNeighborRows: document.querySelector("#bgpNeighborRows"),
+  bgpNetworkRows: document.querySelector("#bgpNetworkRows"),
   addVlanBtn: document.querySelector("#addVlanBtn"),
   addInterfaceBtn: document.querySelector("#addInterfaceBtn"),
   addStaticRouteBtn: document.querySelector("#addStaticRouteBtn"),
   addOspfNetworkBtn: document.querySelector("#addOspfNetworkBtn"),
+  addEigrpNetworkBtn: document.querySelector("#addEigrpNetworkBtn"),
+  addBgpNeighborBtn: document.querySelector("#addBgpNeighborBtn"),
+  addBgpNetworkBtn: document.querySelector("#addBgpNetworkBtn"),
   outputCount: document.querySelector("#outputCount"),
   outputSelect: document.querySelector("#outputSelect"),
   configOutput: document.querySelector("#configOutput"),
@@ -153,6 +184,16 @@ function normalizeInventory(inventory) {
     device.interfaces ||= [];
     device.routing ||= {};
     device.routing.static ||= [];
+    if (device.routing.ospf) device.routing.ospf.networks ||= [];
+    if (device.routing.eigrp) {
+      device.routing.eigrp.networks ||= [];
+      device.routing.eigrp.passive_interfaces ||= [];
+      device.routing.eigrp.no_auto_summary ??= true;
+    }
+    if (device.routing.bgp) {
+      device.routing.bgp.neighbors ||= [];
+      device.routing.bgp.networks ||= [];
+    }
   });
   return normalized;
 }
@@ -265,6 +306,43 @@ function renderDeviceForm() {
     elements.ospfNetworkRows.appendChild(rowElement("ospfNetwork", index, [
       field("Prefix", "prefix", network.prefix || "", "text", "span-6"),
       field("Area", "area", network.area ?? 0, "number", "span-3", { min: 0 }),
+    ]));
+  });
+
+  elements.eigrpSection.classList.toggle("hidden", isL2);
+  const eigrp = isL2 ? undefined : device.routing?.eigrp;
+  elements.eigrpEnabled.checked = !!eigrp;
+  elements.eigrpFields.classList.toggle("hidden", !eigrp);
+  elements.eigrpAsn.value = eigrp?.asn ?? 100;
+  elements.eigrpRouterId.value = eigrp?.router_id || "";
+  elements.eigrpPassiveInterfaces.value = (eigrp?.passive_interfaces || []).join(",");
+  elements.eigrpNoAutoSummary.checked = eigrp?.no_auto_summary !== false;
+  elements.eigrpNetworkRows.innerHTML = "";
+  (eigrp?.networks || []).forEach((network, index) => {
+    elements.eigrpNetworkRows.appendChild(rowElement("eigrpNetwork", index, [
+      field("Prefix", "prefix", network.prefix || "", "text", "span-10"),
+    ]));
+  });
+
+  elements.bgpSection.classList.toggle("hidden", isL2);
+  const bgp = isL2 ? undefined : device.routing?.bgp;
+  elements.bgpEnabled.checked = !!bgp;
+  elements.bgpFields.classList.toggle("hidden", !bgp);
+  elements.bgpAsn.value = bgp?.asn ?? 65001;
+  elements.bgpRouterId.value = bgp?.router_id || "";
+  elements.bgpNeighborRows.innerHTML = "";
+  (bgp?.neighbors || []).forEach((neighbor, index) => {
+    elements.bgpNeighborRows.appendChild(rowElement("bgpNeighbor", index, [
+      field("Address", "address", neighbor.address || "", "text", "span-3"),
+      field("Remote ASN", "remote_as", neighbor.remote_as ?? "", "number", "span-2", { min: 1 }),
+      field("Description", "description", neighbor.description || "", "text", "span-3"),
+      field("Update Source", "update_source", neighbor.update_source || "", "text", "span-3"),
+    ]));
+  });
+  elements.bgpNetworkRows.innerHTML = "";
+  (bgp?.networks || []).forEach((network, index) => {
+    elements.bgpNetworkRows.appendChild(rowElement("bgpNetwork", index, [
+      field("Prefix", "prefix", network.prefix || "", "text", "span-10"),
     ]));
   });
 }
@@ -411,7 +489,9 @@ function sanitizeTargetInput(target) {
 
   if (key === "hostname") cleaned = original.replace(SANITIZE_RULES.hostname, "");
   else if (key === "name" && rowKind === "interface") cleaned = original.replace(SANITIZE_RULES.interface, "");
-  else if (["address", "destination", "next_hop", "prefix", "ospfRouterId"].includes(key)) cleaned = original.replace(SANITIZE_RULES.ipList, "");
+  else if (key === "update_source") cleaned = original.replace(SANITIZE_RULES.interface, "");
+  else if (["address", "destination", "next_hop", "prefix", "ospfRouterId", "eigrpRouterId", "bgpRouterId"].includes(key)) cleaned = original.replace(SANITIZE_RULES.ipList, "");
+  else if (key === "eigrpPassiveInterfaces") cleaned = original.replace(SANITIZE_RULES.ipList, "");
   else if (["name_servers", "ntp_servers"].includes(key)) cleaned = original.replace(SANITIZE_RULES.ipList, "");
   else cleaned = original.replace(SANITIZE_RULES.cliText, "");
 
@@ -432,7 +512,11 @@ function updateDeviceFromForm(event) {
     device[target.name] = target.value.trim();
     if (target.name === "device_layer") {
       device.device_layer = normalizedDeviceLayer(device);
-      if (device.device_layer === "L2" && device.routing?.ospf) delete device.routing.ospf;
+      if (device.device_layer === "L2") {
+        if (device.routing?.ospf) delete device.routing.ospf;
+        if (device.routing?.eigrp) delete device.routing.eigrp;
+        if (device.routing?.bgp) delete device.routing.bgp;
+      }
     }
     if (target.name === "hostname") selectedOutputFile = "";
     renderDeviceList();
@@ -501,6 +585,18 @@ function updateRowFromEvent(event) {
   if (kind === "ospfNetwork") {
     device.routing.ospf.networks[index][key] = key === "area" ? toNumber(value, 0) : value.trim();
   }
+  if (kind === "eigrpNetwork") {
+    device.routing.eigrp.networks[index][key] = value.trim();
+  }
+  if (kind === "bgpNeighbor") {
+    const neighbor = device.routing.bgp.neighbors[index];
+    if (key === "remote_as") neighbor[key] = toNumber(value, value);
+    else if (value === "") delete neighbor[key];
+    else neighbor[key] = value.trim();
+  }
+  if (kind === "bgpNetwork") {
+    device.routing.bgp.networks[index][key] = value.trim();
+  }
   renderOutput();
 }
 
@@ -510,6 +606,9 @@ function removeRow(kind, index) {
   if (kind === "interface") device.interfaces.splice(index, 1);
   if (kind === "static") device.routing.static.splice(index, 1);
   if (kind === "ospfNetwork") device.routing.ospf.networks.splice(index, 1);
+  if (kind === "eigrpNetwork") device.routing.eigrp.networks.splice(index, 1);
+  if (kind === "bgpNeighbor") device.routing.bgp.neighbors.splice(index, 1);
+  if (kind === "bgpNetwork") device.routing.bgp.networks.splice(index, 1);
   render();
 }
 
@@ -635,7 +734,34 @@ function renderRouting(lines, routing, layer = "L3") {
       lines.push(` network ${intToIp(prefix.network)} ${intToIp(prefix.hostmask)} area ${network.area ?? 0}`);
     });
   }
-  if ((routing.static || []).length || routing.ospf) lines.push("!");
+
+  if (routing.eigrp) {
+    lines.push("!");
+    lines.push(`router eigrp ${Number(required(routing.eigrp.asn, "eigrp asn"))}`);
+    if (routing.eigrp.router_id) lines.push(` eigrp router-id ${routing.eigrp.router_id}`);
+    (routing.eigrp.networks || []).forEach((network) => {
+      const prefix = parseIpv4Prefix(required(network.prefix, "eigrp network prefix"));
+      lines.push(` network ${intToIp(prefix.network)} ${intToIp(prefix.hostmask)}`);
+    });
+    (routing.eigrp.passive_interfaces || []).forEach((name) => lines.push(` passive-interface ${name}`));
+    if (routing.eigrp.no_auto_summary !== false) lines.push(" no auto-summary");
+  }
+
+  if (routing.bgp) {
+    lines.push("!");
+    lines.push(`router bgp ${Number(required(routing.bgp.asn, "bgp asn"))}`);
+    if (routing.bgp.router_id) lines.push(` bgp router-id ${routing.bgp.router_id}`);
+    (routing.bgp.neighbors || []).forEach((neighbor) => {
+      lines.push(` neighbor ${required(neighbor.address, "bgp neighbor address")} remote-as ${Number(required(neighbor.remote_as, "bgp remote as"))}`);
+      if (neighbor.description) lines.push(` neighbor ${neighbor.address} description ${neighbor.description}`);
+      if (neighbor.update_source) lines.push(` neighbor ${neighbor.address} update-source ${neighbor.update_source}`);
+    });
+    (routing.bgp.networks || []).forEach((network) => {
+      const prefix = parseIpv4Prefix(required(network.prefix, "bgp network prefix"));
+      lines.push(` network ${intToIp(prefix.network)} mask ${intToIp(prefix.mask)}`);
+    });
+  }
+  if ((routing.static || []).length || routing.ospf || routing.eigrp || routing.bgp) lines.push("!");
 }
 
 function validateInventory(inventory) {
@@ -693,6 +819,8 @@ function validateInventory(inventory) {
     });
 
     if (layer === "L2" && device.routing?.ospf) errors.push(`${device.hostname}: L2 設備不允許 OSPF`);
+    if (layer === "L2" && device.routing?.eigrp) errors.push(`${device.hostname}: L2 設備不允許 EIGRP`);
+    if (layer === "L2" && device.routing?.bgp) errors.push(`${device.hostname}: L2 設備不允許 BGP`);
     if (device.routing?.ospf) {
       const processId = Number(device.routing.ospf.process_id || 1);
       if (!Number.isInteger(processId) || processId < 1) errors.push(`${device.hostname}.routing.ospf.process_id 必須大於 0`);
@@ -703,6 +831,33 @@ function validateInventory(inventory) {
       const area = Number(network.area ?? 0);
       if (!Number.isInteger(area) || area < 0) errors.push(`${device.hostname}.routing.ospf.networks[${networkIndex}].area 必須是 0 或正整數`);
     });
+
+    if (device.routing?.eigrp) {
+      validateAsn(device.routing.eigrp.asn, `${device.hostname}.routing.eigrp.asn`, errors);
+      if (device.routing.eigrp.router_id) validateIp(device.routing.eigrp.router_id, `${device.hostname}.routing.eigrp.router_id`, errors);
+      (device.routing.eigrp.networks || []).forEach((network, networkIndex) => {
+        validatePrefix(network.prefix, `${device.hostname}.routing.eigrp.networks[${networkIndex}].prefix`, errors);
+      });
+      (device.routing.eigrp.passive_interfaces || []).forEach((name, index) => {
+        if (!INTERFACE_NAME_PATTERN.test(name)) errors.push(`${device.hostname}.routing.eigrp.passive_interfaces[${index}] 含非 CLI 安全字元`);
+      });
+    }
+
+    if (device.routing?.bgp) {
+      validateAsn(device.routing.bgp.asn, `${device.hostname}.routing.bgp.asn`, errors);
+      if (device.routing.bgp.router_id) validateIp(device.routing.bgp.router_id, `${device.hostname}.routing.bgp.router_id`, errors);
+      (device.routing.bgp.neighbors || []).forEach((neighbor, neighborIndex) => {
+        validateIp(neighbor.address, `${device.hostname}.routing.bgp.neighbors[${neighborIndex}].address`, errors);
+        validateAsn(neighbor.remote_as, `${device.hostname}.routing.bgp.neighbors[${neighborIndex}].remote_as`, errors);
+        validateCliSafe(neighbor.description, `${device.hostname}.routing.bgp.neighbors[${neighborIndex}].description`, errors);
+        if (neighbor.update_source && !INTERFACE_NAME_PATTERN.test(neighbor.update_source)) {
+          errors.push(`${device.hostname}.routing.bgp.neighbors[${neighborIndex}].update_source 含非 CLI 安全字元`);
+        }
+      });
+      (device.routing.bgp.networks || []).forEach((network, networkIndex) => {
+        validatePrefix(network.prefix, `${device.hostname}.routing.bgp.networks[${networkIndex}].prefix`, errors);
+      });
+    }
   });
   return errors;
 }
@@ -738,6 +893,11 @@ function validateIp(value, label, errors) {
   } catch {
     errors.push(`${label} 不是有效 IPv4 位址`);
   }
+}
+
+function validateAsn(value, label, errors) {
+  const asn = Number(value);
+  if (!Number.isInteger(asn) || asn < 1 || asn > 4294967295) errors.push(`${label} 必須是 1-4294967295`);
 }
 
 function iosAddress(value) {
@@ -943,6 +1103,7 @@ elements.ospfProcessId.addEventListener("input", () => {
 });
 
 elements.ospfRouterId.addEventListener("input", () => {
+  sanitizeTargetInput(elements.ospfRouterId);
   currentDevice().routing.ospf.router_id = elements.ospfRouterId.value.trim();
   renderOutput();
 });
@@ -952,6 +1113,85 @@ elements.addOspfNetworkBtn.addEventListener("click", () => {
   device.routing ||= {};
   device.routing.ospf ||= { process_id: 1, router_id: "", networks: [] };
   device.routing.ospf.networks.push({ prefix: "10.0.0.0/24", area: 0 });
+  render();
+});
+
+elements.eigrpEnabled.addEventListener("change", () => {
+  const device = currentDevice();
+  device.routing ||= {};
+  if (elements.eigrpEnabled.checked) {
+    device.routing.eigrp ||= { asn: 100, router_id: "", networks: [], passive_interfaces: [], no_auto_summary: true };
+  } else {
+    delete device.routing.eigrp;
+  }
+  render();
+});
+
+elements.eigrpAsn.addEventListener("input", () => {
+  currentDevice().routing.eigrp.asn = toNumber(elements.eigrpAsn.value, 100);
+  renderOutput();
+});
+
+elements.eigrpRouterId.addEventListener("input", () => {
+  sanitizeTargetInput(elements.eigrpRouterId);
+  currentDevice().routing.eigrp.router_id = elements.eigrpRouterId.value.trim();
+  renderOutput();
+});
+
+elements.eigrpPassiveInterfaces.addEventListener("input", () => {
+  sanitizeTargetInput(elements.eigrpPassiveInterfaces);
+  currentDevice().routing.eigrp.passive_interfaces = splitList(elements.eigrpPassiveInterfaces.value);
+  renderOutput();
+});
+
+elements.eigrpNoAutoSummary.addEventListener("change", () => {
+  currentDevice().routing.eigrp.no_auto_summary = elements.eigrpNoAutoSummary.checked;
+  renderOutput();
+});
+
+elements.addEigrpNetworkBtn.addEventListener("click", () => {
+  const device = currentDevice();
+  device.routing ||= {};
+  device.routing.eigrp ||= { asn: 100, router_id: "", networks: [], passive_interfaces: [], no_auto_summary: true };
+  device.routing.eigrp.networks.push({ prefix: "10.0.0.0/24" });
+  render();
+});
+
+elements.bgpEnabled.addEventListener("change", () => {
+  const device = currentDevice();
+  device.routing ||= {};
+  if (elements.bgpEnabled.checked) {
+    device.routing.bgp ||= { asn: 65001, router_id: "", neighbors: [], networks: [] };
+  } else {
+    delete device.routing.bgp;
+  }
+  render();
+});
+
+elements.bgpAsn.addEventListener("input", () => {
+  currentDevice().routing.bgp.asn = toNumber(elements.bgpAsn.value, 65001);
+  renderOutput();
+});
+
+elements.bgpRouterId.addEventListener("input", () => {
+  sanitizeTargetInput(elements.bgpRouterId);
+  currentDevice().routing.bgp.router_id = elements.bgpRouterId.value.trim();
+  renderOutput();
+});
+
+elements.addBgpNeighborBtn.addEventListener("click", () => {
+  const device = currentDevice();
+  device.routing ||= {};
+  device.routing.bgp ||= { asn: 65001, router_id: "", neighbors: [], networks: [] };
+  device.routing.bgp.neighbors.push({ address: "203.0.113.1", remote_as: 65000, description: "" });
+  render();
+});
+
+elements.addBgpNetworkBtn.addEventListener("click", () => {
+  const device = currentDevice();
+  device.routing ||= {};
+  device.routing.bgp ||= { asn: 65001, router_id: "", neighbors: [], networks: [] };
+  device.routing.bgp.networks.push({ prefix: "203.0.113.0/30" });
   render();
 });
 

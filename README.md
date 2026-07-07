@@ -181,7 +181,7 @@ python -m configgen --check
 web/index.html
 ```
 
-打開後可以直接新增設備、編輯 VLAN/interface/static route/OSPF/EIGRP/BGP、匯入或匯出 `devices.json`，並複製或下載產生後的 `.cfg`。進階功能例如 ACL、NAT、DHCP、HSRP、STP、EtherChannel、Port Security 可先透過匯入/匯出 JSON 編輯，右側預覽會產生對應設定。
+打開後可以直接新增設備、編輯 VLAN/interface/static route/OSPF/EIGRP/BGP，也能在「進階」分頁直接調整 STP、DHCP、ACL、NAT。Interface 表格也支援 NAT role、IP helper、HSRP、ACL 套用、EtherChannel、Port Security 與 BPDU Guard。編輯後右側會即時產生 `.cfg`，也可以匯入或匯出 `devices.json`。
 
 GUI 是純前端靜態檔案，不需要 npm、Flask 或其他後端服務。若要和 CLI 流程接軌，建議在 GUI 匯出 JSON 後覆蓋 `inventory/devices.json`，再執行：
 

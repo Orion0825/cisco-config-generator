@@ -197,8 +197,10 @@ const elements = {
   deviceCount: document.querySelector("#deviceCount"),
   deviceList: document.querySelector("#deviceList"),
   deviceTab: document.querySelector("#deviceTab"),
+  advancedTab: document.querySelector("#advancedTab"),
   defaultsTab: document.querySelector("#defaultsTab"),
   deviceForm: document.querySelector("#deviceForm"),
+  advancedForm: document.querySelector("#advancedForm"),
   defaultsForm: document.querySelector("#defaultsForm"),
   vlanRows: document.querySelector("#vlanRows"),
   interfaceRows: document.querySelector("#interfaceRows"),
@@ -226,6 +228,15 @@ const elements = {
   bgpRouterId: document.querySelector("#bgpRouterId"),
   bgpNeighborRows: document.querySelector("#bgpNeighborRows"),
   bgpNetworkRows: document.querySelector("#bgpNetworkRows"),
+  stpMode: document.querySelector("#stpMode"),
+  stpPortfastDefault: document.querySelector("#stpPortfastDefault"),
+  stpBpduguardDefault: document.querySelector("#stpBpduguardDefault"),
+  stpPriorityRows: document.querySelector("#stpPriorityRows"),
+  dhcpExcludedRows: document.querySelector("#dhcpExcludedRows"),
+  dhcpPoolRows: document.querySelector("#dhcpPoolRows"),
+  aclRows: document.querySelector("#aclRows"),
+  aclEntryRows: document.querySelector("#aclEntryRows"),
+  natRows: document.querySelector("#natRows"),
   addVlanBtn: document.querySelector("#addVlanBtn"),
   addInterfaceBtn: document.querySelector("#addInterfaceBtn"),
   addStaticRouteBtn: document.querySelector("#addStaticRouteBtn"),
@@ -233,6 +244,12 @@ const elements = {
   addEigrpNetworkBtn: document.querySelector("#addEigrpNetworkBtn"),
   addBgpNeighborBtn: document.querySelector("#addBgpNeighborBtn"),
   addBgpNetworkBtn: document.querySelector("#addBgpNetworkBtn"),
+  addStpPriorityBtn: document.querySelector("#addStpPriorityBtn"),
+  addDhcpExcludedBtn: document.querySelector("#addDhcpExcludedBtn"),
+  addDhcpPoolBtn: document.querySelector("#addDhcpPoolBtn"),
+  addAclBtn: document.querySelector("#addAclBtn"),
+  addAclEntryBtn: document.querySelector("#addAclEntryBtn"),
+  addNatRuleBtn: document.querySelector("#addNatRuleBtn"),
   outputCount: document.querySelector("#outputCount"),
   outputSelect: document.querySelector("#outputSelect"),
   configOutput: document.querySelector("#configOutput"),
@@ -258,6 +275,17 @@ function normalizeInventory(inventory) {
     device.device_layer = normalizedDeviceLayer(device);
     device.vlans ||= [];
     device.interfaces ||= [];
+    device.acls ||= [];
+    device.acls.forEach((acl) => {
+      acl.entries ||= [];
+      acl.type ||= "extended";
+    });
+    device.dhcp ||= {};
+    device.dhcp.excluded_addresses ||= [];
+    device.dhcp.pools ||= [];
+    device.nat ||= {};
+    device.nat.inside_source ||= [];
+    if (device.spanning_tree) device.spanning_tree.vlan_priorities ||= [];
     device.routing ||= {};
     device.routing.static ||= [];
     if (device.routing.ospf) device.routing.ospf.networks ||= [];
@@ -357,12 +385,19 @@ function deviceTags(device) {
   return tags;
 }
 
+function accessGroupName(iface, direction) {
+  return (iface.access_groups || []).find((item) => item.direction === direction)?.name || "";
+}
+
 function renderForms() {
   elements.deviceTab.classList.toggle("active", activeTab === "device");
+  elements.advancedTab.classList.toggle("active", activeTab === "advanced");
   elements.defaultsTab.classList.toggle("active", activeTab === "defaults");
   elements.deviceForm.classList.toggle("hidden", activeTab !== "device");
+  elements.advancedForm.classList.toggle("hidden", activeTab !== "advanced");
   elements.defaultsForm.classList.toggle("hidden", activeTab !== "defaults");
   renderDeviceForm();
+  renderAdvancedForm();
   renderDefaultsForm();
 }
 
@@ -392,13 +427,23 @@ function renderDeviceForm() {
       field("Address", "address", item.address || "", "text", "span-3 mode-l3"),
       selectField("NAT", "nat_role", item.nat_role || "", ["", "inside", "outside"], "span-2 mode-l3"),
       field("Helper", "helper_addresses", (item.helper_addresses || []).join(","), "text", "span-3 mode-l3"),
+      field("HSRP Group", "hsrp_group", item.hsrp?.[0]?.group ?? "", "number", "span-2 mode-l3", { min: 0, max: 255 }),
+      field("HSRP VIP", "hsrp_virtual_ip", item.hsrp?.[0]?.virtual_ip || "", "text", "span-3 mode-l3"),
+      field("HSRP Priority", "hsrp_priority", item.hsrp?.[0]?.priority ?? "", "number", "span-2 mode-l3", { min: 1, max: 255 }),
+      checkboxField("HSRP Preempt", "hsrp_preempt", !!item.hsrp?.[0]?.preempt, "span-2 mode-l3"),
+      field("ACL In", "access_group_in", accessGroupName(item, "in"), "text", "span-3 mode-l3"),
+      field("ACL Out", "access_group_out", accessGroupName(item, "out"), "text", "span-3 mode-l3"),
       field("Access VLAN", "access_vlan", item.access_vlan ?? "", "number", "span-2 mode-access", { min: 1, max: 4094 }),
       field("Voice VLAN", "voice_vlan", item.voice_vlan ?? "", "number", "span-2 mode-access", { min: 1, max: 4094 }),
       field("Native VLAN", "native_vlan", item.native_vlan ?? "", "number", "span-2 mode-trunk", { min: 1, max: 4094 }),
       field("Allowed VLANs", "allowed_vlans", (item.allowed_vlans || []).join(","), "text", "span-4 mode-trunk"),
       field("Channel", "channel_group", item.channel_group ?? "", "number", "span-2", { min: 1 }),
       selectField("LACP", "channel_mode", item.channel_mode || "active", ["active", "passive", "on", "auto", "desirable"], "span-2"),
+      field("PortSec Max", "port_security_maximum", item.port_security?.maximum ?? "", "number", "span-2 mode-access", { min: 1 }),
+      selectField("Violation", "port_security_violation", item.port_security?.violation || "restrict", ["protect", "restrict", "shutdown"], "span-2 mode-access"),
+      checkboxField("Sticky", "port_security_sticky", !!item.port_security?.sticky, "span-2 mode-access"),
       checkboxField("Portfast", "spanning_tree_portfast", !!item.spanning_tree_portfast, "span-2 mode-access"),
+      checkboxField("BPDU Guard", "spanning_tree_bpduguard", !!item.spanning_tree_bpduguard, "span-2 mode-access"),
       checkboxField("Shutdown", "shutdown", !!item.shutdown, "span-2"),
     ]);
     updateInterfaceVisibility(row, item.mode || "routed");
@@ -468,6 +513,73 @@ function renderDeviceForm() {
   });
 }
 
+function renderAdvancedForm() {
+  const device = currentDevice();
+  const stp = device.spanning_tree || {};
+  elements.stpMode.value = stp.mode || "";
+  elements.stpPortfastDefault.checked = !!stp.portfast_default;
+  elements.stpBpduguardDefault.checked = !!stp.bpduguard_default;
+  elements.stpPriorityRows.innerHTML = "";
+  (stp.vlan_priorities || []).forEach((item, index) => {
+    elements.stpPriorityRows.appendChild(rowElement("stpPriority", index, [
+      field("VLANs", "vlans", (item.vlans || []).join(","), "text", "span-5"),
+      field("Priority", "priority", item.priority ?? 4096, "number", "span-3", { min: 0, max: 61440, step: 4096 }),
+    ]));
+  });
+
+  const dhcp = device.dhcp || {};
+  elements.dhcpExcludedRows.innerHTML = "";
+  (dhcp.excluded_addresses || []).forEach((item, index) => {
+    const row = typeof item === "string" ? { start: item, end: "" } : item;
+    elements.dhcpExcludedRows.appendChild(rowElement("dhcpExcluded", index, [
+      field("Start", "start", row.start || "", "text", "span-5"),
+      field("End", "end", row.end || "", "text", "span-5"),
+    ]));
+  });
+  elements.dhcpPoolRows.innerHTML = "";
+  (dhcp.pools || []).forEach((pool, index) => {
+    elements.dhcpPoolRows.appendChild(rowElement("dhcpPool", index, [
+      field("Name", "name", pool.name || "", "text", "span-2"),
+      field("Network", "network", pool.network || "", "text", "span-3"),
+      field("Gateway", "default_router", pool.default_router || "", "text", "span-3"),
+      field("DNS", "dns_servers", (pool.dns_servers || []).join(","), "text", "span-3"),
+      field("Domain", "domain_name", pool.domain_name || "", "text", "span-3"),
+    ]));
+  });
+
+  elements.aclRows.innerHTML = "";
+  (device.acls || []).forEach((acl, index) => {
+    elements.aclRows.appendChild(rowElement("acl", index, [
+      field("Name", "name", acl.name || "", "text", "span-4"),
+      selectField("Type", "type", acl.type || "extended", ["standard", "extended"], "span-3"),
+    ]));
+  });
+  elements.aclEntryRows.innerHTML = "";
+  (device.acls || []).forEach((acl, aclIndex) => {
+    (acl.entries || []).forEach((entry, entryIndex) => {
+      elements.aclEntryRows.appendChild(rowElement("aclEntry", entryIndex, [
+        field("ACL", "acl_name", acl.name || "", "text", "span-2"),
+        field("Remark", "remark", entry.remark || "", "text", "span-3"),
+        selectField("Action", "action", entry.action || "permit", ["permit", "deny"], "span-2"),
+        field("Protocol", "protocol", entry.protocol || "ip", "text", "span-2"),
+        field("Source", "source", entry.source || "any", "text", "span-3"),
+        field("Destination", "destination", entry.destination || "any", "text", "span-3"),
+        field("Port", "destination_port", entry.destination_port || "", "text", "span-2"),
+        checkboxField("Log", "log", !!entry.log, "span-2"),
+      ], { aclIndex }));
+    });
+  });
+
+  elements.natRows.innerHTML = "";
+  (device.nat?.inside_source || []).forEach((item, index) => {
+    elements.natRows.appendChild(rowElement("natRule", index, [
+      field("ACL", "acl", item.acl || "", "text", "span-4"),
+      field("Interface", "interface", item.interface || "", "text", "span-4"),
+      checkboxField("Overload", "overload", item.overload !== false, "span-2"),
+    ]));
+  });
+}
+
 function renderDefaultsForm() {
   const defaults = state.defaults;
   const user = defaults.local_users?.[0] || {};
@@ -523,11 +635,14 @@ function renderMessages(errors, warnings) {
   });
 }
 
-function rowElement(kind, index, fields) {
+function rowElement(kind, index, fields, extra = {}) {
   const row = document.createElement("div");
   row.className = "row";
   row.dataset.kind = kind;
   row.dataset.index = String(index);
+  Object.entries(extra).forEach(([key, value]) => {
+    row.dataset[key] = String(value);
+  });
   fields.forEach((item) => row.appendChild(item));
 
   const remove = document.createElement("button");
@@ -536,6 +651,9 @@ function rowElement(kind, index, fields) {
   remove.dataset.action = "remove";
   remove.dataset.kind = kind;
   remove.dataset.index = String(index);
+  Object.entries(extra).forEach(([key, value]) => {
+    remove.dataset[key] = String(value);
+  });
   remove.textContent = "刪除";
   row.appendChild(remove);
   return row;
@@ -591,6 +709,45 @@ function updateInterfaceVisibility(row, mode) {
   row.querySelectorAll(".mode-trunk").forEach((item) => item.classList.toggle("mode-hidden", mode !== "trunk"));
 }
 
+function updateInterfaceHsrp(iface, key, value) {
+  if (value === "" && !["hsrp_preempt"].includes(key)) {
+    if (!iface.hsrp?.[0]) return;
+  }
+  iface.hsrp ||= [{}];
+  const group = iface.hsrp[0];
+  if (key === "hsrp_group") group.group = toNumber(value, "");
+  if (key === "hsrp_virtual_ip") group.virtual_ip = String(value).trim();
+  if (key === "hsrp_priority") {
+    if (value === "") delete group.priority;
+    else group.priority = toNumber(value, value);
+  }
+  if (key === "hsrp_preempt") group.preempt = !!value;
+  if (!group.group && !group.virtual_ip && !group.priority && !group.preempt) delete iface.hsrp;
+}
+
+function updateInterfaceAccessGroup(iface, direction, value) {
+  iface.access_groups ||= [];
+  const existing = iface.access_groups.find((item) => item.direction === direction);
+  if (!value) {
+    iface.access_groups = iface.access_groups.filter((item) => item.direction !== direction);
+    if (!iface.access_groups.length) delete iface.access_groups;
+    return;
+  }
+  if (existing) existing.name = String(value).trim();
+  else iface.access_groups.push({ name: String(value).trim(), direction });
+}
+
+function updateInterfacePortSecurity(iface, key, value) {
+  iface.port_security ||= {};
+  if (key === "port_security_maximum") {
+    if (value === "") delete iface.port_security.maximum;
+    else iface.port_security.maximum = toNumber(value, value);
+  }
+  if (key === "port_security_violation") iface.port_security.violation = String(value);
+  if (key === "port_security_sticky") iface.port_security.sticky = !!value;
+  if (!iface.port_security.maximum && !iface.port_security.violation && !iface.port_security.sticky) delete iface.port_security;
+}
+
 function setFormValue(form, name, value) {
   const input = form.elements[name];
   if (!input) return;
@@ -610,8 +767,9 @@ function sanitizeTargetInput(target) {
 
   if (key === "hostname") cleaned = original.replace(SANITIZE_RULES.hostname, "");
   else if (key === "name" && rowKind === "interface") cleaned = original.replace(SANITIZE_RULES.interface, "");
-  else if (key === "update_source") cleaned = original.replace(SANITIZE_RULES.interface, "");
-  else if (["address", "destination", "next_hop", "prefix", "helper_addresses", "ospfRouterId", "eigrpRouterId", "bgpRouterId"].includes(key)) cleaned = original.replace(SANITIZE_RULES.ipList, "");
+  else if (["update_source", "interface"].includes(key)) cleaned = original.replace(SANITIZE_RULES.interface, "");
+  else if (["address", "destination", "next_hop", "prefix", "helper_addresses", "hsrp_virtual_ip", "start", "end", "network", "default_router", "source", "ospfRouterId", "eigrpRouterId", "bgpRouterId"].includes(key)) cleaned = original.replace(SANITIZE_RULES.ipList, "");
+  else if (["dns_servers", "vlans"].includes(key)) cleaned = original.replace(SANITIZE_RULES.ipList, "");
   else if (key === "eigrpPassiveInterfaces") cleaned = original.replace(SANITIZE_RULES.ipList, "");
   else if (["name_servers", "ntp_servers"].includes(key)) cleaned = original.replace(SANITIZE_RULES.ipList, "");
   else cleaned = original.replace(SANITIZE_RULES.cliText, "");
@@ -669,6 +827,29 @@ function updateDefaultsFromForm(event) {
   renderOutput();
 }
 
+function updateAdvancedFromEvent(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+  const device = currentDevice();
+  const advancedIds = new Set(["stpMode", "stpPortfastDefault", "stpBpduguardDefault"]);
+  if (!advancedIds.has(target.id)) return;
+
+  device.spanning_tree ||= {};
+  if (target.id === "stpMode") {
+    if (target.value) device.spanning_tree.mode = target.value;
+    else delete device.spanning_tree.mode;
+  }
+  if (target.id === "stpPortfastDefault") device.spanning_tree.portfast_default = target.checked;
+  if (target.id === "stpBpduguardDefault") device.spanning_tree.bpduguard_default = target.checked;
+
+  const stp = device.spanning_tree;
+  if (!stp.mode && !stp.portfast_default && !stp.bpduguard_default && !(stp.vlan_priorities || []).length) {
+    delete device.spanning_tree;
+  }
+  renderDeviceList();
+  renderOutput();
+}
+
 function updateRowFromEvent(event) {
   const target = event.target;
   if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
@@ -695,10 +876,16 @@ function updateRowFromEvent(event) {
     } else if (["access_vlan", "voice_vlan", "native_vlan", "channel_group"].includes(key)) {
       if (value === "") delete iface[key];
       else iface[key] = toNumber(value, value);
+    } else if (["hsrp_group", "hsrp_virtual_ip", "hsrp_priority", "hsrp_preempt"].includes(key)) {
+      updateInterfaceHsrp(iface, key, value);
+    } else if (["access_group_in", "access_group_out"].includes(key)) {
+      updateInterfaceAccessGroup(iface, key === "access_group_in" ? "in" : "out", value);
+    } else if (["port_security_maximum", "port_security_violation", "port_security_sticky"].includes(key)) {
+      updateInterfacePortSecurity(iface, key, value);
     } else if (key === "nat_role") {
       if (value === "") delete iface[key];
       else iface[key] = value;
-    } else if (["shutdown", "spanning_tree_portfast"].includes(key)) {
+    } else if (["shutdown", "spanning_tree_portfast", "spanning_tree_bpduguard"].includes(key)) {
       iface[key] = value;
     } else {
       iface[key] = String(value).trim();
@@ -723,10 +910,49 @@ function updateRowFromEvent(event) {
   if (kind === "bgpNetwork") {
     device.routing.bgp.networks[index][key] = value.trim();
   }
+  if (kind === "stpPriority") {
+    device.spanning_tree ||= {};
+    device.spanning_tree.vlan_priorities ||= [];
+    const item = device.spanning_tree.vlan_priorities[index];
+    item[key] = key === "vlans" ? splitList(value).map((vlan) => toNumber(vlan, vlan)) : toNumber(value, 4096);
+  }
+  if (kind === "dhcpExcluded") {
+    device.dhcp ||= {};
+    device.dhcp.excluded_addresses ||= [];
+    const item = normalizeExcludedAddress(device.dhcp.excluded_addresses[index]);
+    item[key] = value.trim();
+    device.dhcp.excluded_addresses[index] = item;
+  }
+  if (kind === "dhcpPool") {
+    device.dhcp ||= {};
+    device.dhcp.pools ||= [];
+    const pool = device.dhcp.pools[index];
+    pool[key] = key === "dns_servers" ? splitList(value) : value.trim();
+  }
+  if (kind === "acl") {
+    device.acls ||= [];
+    device.acls[index][key] = value.trim();
+  }
+  if (kind === "aclEntry") {
+    const aclIndex = Number(row.dataset.aclIndex);
+    const acl = device.acls[aclIndex];
+    const entry = acl.entries[index];
+    if (key === "acl_name") acl.name = value.trim();
+    else if (["log"].includes(key)) entry[key] = value;
+    else if (value === "") delete entry[key];
+    else entry[key] = value.trim();
+  }
+  if (kind === "natRule") {
+    device.nat ||= {};
+    device.nat.inside_source ||= [];
+    const item = device.nat.inside_source[index];
+    if (key === "overload") item[key] = value;
+    else item[key] = value.trim();
+  }
   renderOutput();
 }
 
-function removeRow(kind, index) {
+function removeRow(kind, index, meta = {}) {
   const device = currentDevice();
   if (kind === "vlan") device.vlans.splice(index, 1);
   if (kind === "interface") device.interfaces.splice(index, 1);
@@ -735,6 +961,15 @@ function removeRow(kind, index) {
   if (kind === "eigrpNetwork") device.routing.eigrp.networks.splice(index, 1);
   if (kind === "bgpNeighbor") device.routing.bgp.neighbors.splice(index, 1);
   if (kind === "bgpNetwork") device.routing.bgp.networks.splice(index, 1);
+  if (kind === "stpPriority") device.spanning_tree.vlan_priorities.splice(index, 1);
+  if (kind === "dhcpExcluded") device.dhcp.excluded_addresses.splice(index, 1);
+  if (kind === "dhcpPool") device.dhcp.pools.splice(index, 1);
+  if (kind === "acl") device.acls.splice(index, 1);
+  if (kind === "aclEntry") {
+    const aclIndex = Number(meta.aclIndex || 0);
+    device.acls[aclIndex].entries.splice(index, 1);
+  }
+  if (kind === "natRule") device.nat.inside_source.splice(index, 1);
   render();
 }
 
@@ -1189,6 +1424,11 @@ function splitList(value) {
     .filter(Boolean);
 }
 
+function normalizeExcludedAddress(value) {
+  if (typeof value === "string") return { start: value, end: "" };
+  return value || { start: "", end: "" };
+}
+
 function toNumber(value, fallback) {
   if (value === "") return fallback;
   const number = Number(value);
@@ -1280,19 +1520,34 @@ elements.defaultsTab.addEventListener("click", () => {
   renderForms();
 });
 
+elements.advancedTab.addEventListener("click", () => {
+  activeTab = "advanced";
+  renderForms();
+});
+
 elements.deviceForm.addEventListener("input", updateDeviceFromForm);
 elements.deviceForm.addEventListener("change", (event) => {
   updateDeviceFromForm(event);
   updateRowFromEvent(event);
 });
 elements.deviceForm.addEventListener("input", updateRowFromEvent);
+elements.advancedForm.addEventListener("input", updateAdvancedFromEvent);
+elements.advancedForm.addEventListener("change", updateAdvancedFromEvent);
+elements.advancedForm.addEventListener("input", updateRowFromEvent);
+elements.advancedForm.addEventListener("change", updateRowFromEvent);
 elements.defaultsForm.addEventListener("input", updateDefaultsFromForm);
 elements.defaultsForm.addEventListener("change", updateDefaultsFromForm);
 
 elements.deviceForm.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof HTMLButtonElement)) return;
-  if (target.dataset.action === "remove") removeRow(target.dataset.kind, Number(target.dataset.index));
+  if (target.dataset.action === "remove") removeRow(target.dataset.kind, Number(target.dataset.index), target.dataset);
+});
+
+elements.advancedForm.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLButtonElement)) return;
+  if (target.dataset.action === "remove") removeRow(target.dataset.kind, Number(target.dataset.index), target.dataset);
 });
 
 elements.addVlanBtn.addEventListener("click", () => {
@@ -1425,6 +1680,54 @@ elements.addBgpNetworkBtn.addEventListener("click", () => {
   device.routing ||= {};
   device.routing.bgp ||= { asn: 65001, router_id: "", neighbors: [], networks: [] };
   device.routing.bgp.networks.push({ prefix: "203.0.113.0/30" });
+  render();
+});
+
+elements.addStpPriorityBtn.addEventListener("click", () => {
+  const device = currentDevice();
+  device.spanning_tree ||= { mode: "rapid-pvst", vlan_priorities: [] };
+  device.spanning_tree.vlan_priorities ||= [];
+  device.spanning_tree.vlan_priorities.push({ vlans: [10], priority: 4096 });
+  render();
+});
+
+elements.addDhcpExcludedBtn.addEventListener("click", () => {
+  const device = currentDevice();
+  device.dhcp ||= {};
+  device.dhcp.excluded_addresses ||= [];
+  device.dhcp.excluded_addresses.push({ start: "10.0.0.1", end: "10.0.0.20" });
+  render();
+});
+
+elements.addDhcpPoolBtn.addEventListener("click", () => {
+  const device = currentDevice();
+  device.dhcp ||= {};
+  device.dhcp.pools ||= [];
+  device.dhcp.pools.push({ name: "USERS", network: "10.0.0.0/24", default_router: "10.0.0.1", dns_servers: ["1.1.1.1"] });
+  render();
+});
+
+elements.addAclBtn.addEventListener("click", () => {
+  const device = currentDevice();
+  device.acls ||= [];
+  device.acls.push({ name: `ACL-${device.acls.length + 1}`, type: "extended", entries: [] });
+  render();
+});
+
+elements.addAclEntryBtn.addEventListener("click", () => {
+  const device = currentDevice();
+  device.acls ||= [];
+  if (!device.acls.length) device.acls.push({ name: "ACL-1", type: "extended", entries: [] });
+  device.acls[0].entries ||= [];
+  device.acls[0].entries.push({ action: "permit", protocol: "ip", source: "any", destination: "any" });
+  render();
+});
+
+elements.addNatRuleBtn.addEventListener("click", () => {
+  const device = currentDevice();
+  device.nat ||= {};
+  device.nat.inside_source ||= [];
+  device.nat.inside_source.push({ acl: "INSIDE-NAT", interface: "GigabitEthernet0/0", overload: true });
   render();
 });
 

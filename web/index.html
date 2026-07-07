@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cisco Config Generator</title>
-    <link rel="stylesheet" href="styles.css?v=20260707-advanced">
+    <link rel="stylesheet" href="styles.css?v=20260707-ui-editors">
   </head>
   <body>
     <div class="app-shell">
@@ -48,6 +48,7 @@
         <section class="editor-panel" aria-label="設定編輯區">
           <div class="tabs" role="tablist" aria-label="編輯模式">
             <button id="deviceTab" type="button" class="tab active">設備</button>
+            <button id="advancedTab" type="button" class="tab">進階</button>
             <button id="defaultsTab" type="button" class="tab">預設值</button>
           </div>
 
@@ -204,6 +205,69 @@
             </section>
           </form>
 
+          <form id="advancedForm" class="form-stack hidden">
+            <section class="section-block">
+              <div class="section-heading">
+                <h2>STP</h2>
+                <button id="addStpPriorityBtn" type="button">新增 VLAN Priority</button>
+              </div>
+              <div class="field-grid">
+                <label>
+                  Mode
+                  <select id="stpMode">
+                    <option value="">停用</option>
+                    <option value="pvst">pvst</option>
+                    <option value="rapid-pvst">rapid-pvst</option>
+                    <option value="mst">mst</option>
+                  </select>
+                </label>
+                <label class="switch field-switch">
+                  <input id="stpPortfastDefault" type="checkbox">
+                  <span>PortFast Default</span>
+                </label>
+                <label class="switch field-switch">
+                  <input id="stpBpduguardDefault" type="checkbox">
+                  <span>BPDU Guard Default</span>
+                </label>
+              </div>
+              <div id="stpPriorityRows" class="rows advanced-rows"></div>
+            </section>
+
+            <section class="section-block">
+              <div class="section-heading">
+                <h2>DHCP</h2>
+                <button id="addDhcpExcludedBtn" type="button">新增排除位址</button>
+              </div>
+              <div id="dhcpExcludedRows" class="rows"></div>
+              <div class="section-heading compact">
+                <h3>Pool</h3>
+                <button id="addDhcpPoolBtn" type="button">新增 Pool</button>
+              </div>
+              <div id="dhcpPoolRows" class="rows"></div>
+            </section>
+
+            <section class="section-block">
+              <div class="section-heading">
+                <h2>ACL</h2>
+                <button id="addAclBtn" type="button">新增 ACL</button>
+              </div>
+              <div id="aclRows" class="rows"></div>
+              <div class="section-heading compact">
+                <h3>Entry</h3>
+                <button id="addAclEntryBtn" type="button">新增 Entry</button>
+              </div>
+              <div id="aclEntryRows" class="rows"></div>
+            </section>
+
+            <section class="section-block">
+              <div class="section-heading">
+                <h2>NAT</h2>
+                <button id="addNatRuleBtn" type="button">新增 NAT Overload</button>
+              </div>
+              <div id="natRows" class="rows"></div>
+            </section>
+          </form>
+
           <form id="defaultsForm" class="form-stack hidden">
             <section class="section-block">
               <h2>全域預設值</h2>
@@ -280,6 +344,6 @@
       </main>
     </div>
 
-    <script src="app.js?v=20260707-advanced"></script>
+    <script src="app.js?v=20260707-ui-editors"></script>
   </body>
 </html>

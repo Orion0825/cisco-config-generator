@@ -85,6 +85,8 @@ def render_device(defaults: dict[str, Any], device: dict[str, Any]) -> str:
 
     add("!")
     add("! cisco編輯器byOrion")
+    add("! Cisco CLI 可複製貼上區 START")
+    add("! 以下內容可直接貼到 Console / SSH")
     add(f"! Device layer: {device_layer}")
     add("!")
     add(f"hostname {hostname}")

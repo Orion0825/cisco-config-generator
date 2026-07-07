@@ -1006,6 +1006,8 @@ function renderDevice(defaults, device) {
 
   add("!");
   add("! cisco編輯器byOrion");
+  add("! Cisco CLI 可複製貼上區 START");
+  add("! 以下內容可直接貼到 Console / SSH");
   add(`! Device layer: ${layer}`);
   add("!");
   add(`hostname ${hostname}`);

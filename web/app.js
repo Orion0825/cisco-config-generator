@@ -194,6 +194,9 @@ const elements = {
   statL2: document.querySelector("#statL2"),
   statL3: document.querySelector("#statL3"),
   statRouting: document.querySelector("#statRouting"),
+  introEditBtn: document.querySelector("#introEditBtn"),
+  introOutputBtn: document.querySelector("#introOutputBtn"),
+  introCopyBtn: document.querySelector("#introCopyBtn"),
   fileInput: document.querySelector("#fileInput"),
   importBtn: document.querySelector("#importBtn"),
   exportBtn: document.querySelector("#exportBtn"),
@@ -205,6 +208,8 @@ const elements = {
   deviceTab: document.querySelector("#deviceTab"),
   advancedTab: document.querySelector("#advancedTab"),
   defaultsTab: document.querySelector("#defaultsTab"),
+  editorPanel: document.querySelector(".editor-panel"),
+  outputPanel: document.querySelector(".output-panel"),
   deviceForm: document.querySelector("#deviceForm"),
   advancedForm: document.querySelector("#advancedForm"),
   defaultsForm: document.querySelector("#defaultsForm"),
@@ -1603,13 +1608,69 @@ function download(filename, content, type = "text/plain") {
 }
 
 async function copyText(text) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
+  elements.configOutput.focus();
+  elements.configOutput.select();
+
+  try {
+    if (document.execCommand("copy")) return true;
+  } catch {
+    // Fall through to the async clipboard API when execCommand is unavailable.
+  }
+
+  if (!navigator.clipboard?.writeText) return false;
+  await Promise.race([
+    navigator.clipboard.writeText(text),
+    new Promise((_, reject) => {
+      window.setTimeout(() => reject(new Error("clipboard timeout")), 800);
+    }),
+  ]);
+  return true;
+}
+
+function flashElement(element) {
+  if (!element) return;
+  element.classList.remove("attention-flash");
+  void element.offsetWidth;
+  element.classList.add("attention-flash");
+  window.setTimeout(() => element.classList.remove("attention-flash"), 900);
+}
+
+function focusDeviceEditor() {
+  activeTab = "device";
+  renderForms();
+  elements.editorPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  elements.deviceForm.elements.hostname?.focus();
+  elements.statusText.textContent = "已切到設備編輯";
+  flashElement(elements.editorPanel);
+}
+
+function focusOutputPanel() {
+  renderOutput();
+  elements.outputPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  elements.configOutput.focus();
+  elements.statusText.textContent = "請確認右側輸出，可直接複製貼上";
+  flashElement(elements.outputPanel);
+}
+
+async function copyCurrentConfig() {
+  if (!elements.configOutput.value) {
+    elements.statusText.textContent = "目前沒有可複製的設定檔";
     return;
   }
-  elements.configOutput.select();
-  document.execCommand("copy");
+  try {
+    const copied = await copyText(elements.configOutput.value);
+    elements.statusText.textContent = copied ? "已複製設定檔，可貼到 Console / SSH" : "已選取設定檔，請按 Ctrl/Cmd+C 複製";
+  } catch {
+    elements.configOutput.focus();
+    elements.configOutput.select();
+    elements.statusText.textContent = "已選取設定檔，請按 Ctrl/Cmd+C 複製";
+  }
+  flashElement(elements.outputPanel);
 }
+
+elements.introEditBtn.addEventListener("click", focusDeviceEditor);
+elements.introOutputBtn.addEventListener("click", focusOutputPanel);
+elements.introCopyBtn.addEventListener("click", copyCurrentConfig);
 
 elements.importBtn.addEventListener("click", () => elements.fileInput.click());
 elements.fileInput.addEventListener("change", async () => {
@@ -1883,8 +1944,7 @@ elements.outputSelect.addEventListener("change", () => {
 });
 
 elements.copyConfigBtn.addEventListener("click", async () => {
-  await copyText(elements.configOutput.value);
-  elements.statusText.textContent = "已複製設定檔";
+  await copyCurrentConfig();
 });
 
 elements.downloadConfigBtn.addEventListener("click", () => {

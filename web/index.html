@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cisco Config Generator</title>
-    <link rel="stylesheet" href="styles.css?v=20260707-cli-marker">
+    <link rel="stylesheet" href="styles.css?v=20260707-interactive-flow">
   </head>
   <body>
     <div class="app-shell">
@@ -40,9 +40,9 @@
           <strong>從設備資料產生可直接貼上的 Cisco CLI config</strong>
         </div>
         <div class="intro-flow" aria-label="操作流程">
-          <span>編輯設備</span>
-          <span>檢查輸出</span>
-          <span>複製貼上</span>
+          <button id="introEditBtn" type="button">編輯設備</button>
+          <button id="introOutputBtn" type="button">檢查輸出</button>
+          <button id="introCopyBtn" type="button">複製貼上</button>
         </div>
       </section>
 
@@ -362,6 +362,6 @@
       </main>
     </div>
 
-    <script src="app.js?v=20260707-cli-marker"></script>
+    <script src="app.js?v=20260707-interactive-flow"></script>
   </body>
 </html>

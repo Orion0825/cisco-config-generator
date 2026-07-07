@@ -262,9 +262,10 @@ textarea {
   justify-content: flex-end;
 }
 
-.intro-flow span {
+.intro-flow button {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-height: 26px;
   padding: 0 10px;
   border-radius: 999px;
@@ -273,6 +274,27 @@ textarea {
   color: #36505f;
   font-size: 12px;
   font-weight: 800;
+}
+
+.intro-flow button:hover {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.attention-flash {
+  animation: attentionFlash 900ms ease;
+}
+
+@keyframes attentionFlash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(15, 118, 110, 0.28), var(--shadow);
+  }
+  45% {
+    box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.2), var(--shadow);
+  }
+  100% {
+    box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  }
 }
 
 .workspace {
@@ -777,7 +799,7 @@ label select {
     justify-content: stretch;
   }
 
-  .intro-flow span {
+  .intro-flow button {
     flex: 1;
     justify-content: center;
   }

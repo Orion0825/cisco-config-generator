@@ -53,6 +53,13 @@
                   <input name="role" autocomplete="off">
                 </label>
                 <label>
+                  Layer
+                  <select name="device_layer">
+                    <option value="L3">L3</option>
+                    <option value="L2">L2</option>
+                  </select>
+                </label>
+                <label>
                   Platform
                   <select name="platform">
                     <option value="ios">ios</option>
@@ -83,15 +90,15 @@
               <div id="interfaceRows" class="rows"></div>
             </section>
 
-            <section class="section-block">
+            <section id="staticRouteSection" class="section-block">
               <div class="section-heading">
-                <h2>Static Route</h2>
+                <h2 id="staticRouteTitle">Static Route</h2>
                 <button id="addStaticRouteBtn" type="button">新增路由</button>
               </div>
               <div id="staticRouteRows" class="rows"></div>
             </section>
 
-            <section class="section-block">
+            <section id="ospfSection" class="section-block">
               <div class="section-heading">
                 <h2>OSPF</h2>
                 <label class="switch">
@@ -185,7 +192,7 @@
             <strong id="outputCount">0</strong>
           </div>
           <select id="outputSelect" aria-label="選擇輸出檔案"></select>
-          <textarea id="configOutput" spellcheck="false"></textarea>
+          <textarea id="configOutput" spellcheck="false" readonly></textarea>
           <div class="output-actions">
             <button id="copyConfigBtn" type="button">複製</button>
             <button id="downloadConfigBtn" type="button">下載 CFG</button>

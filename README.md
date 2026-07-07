@@ -30,6 +30,7 @@ tests/                 單元測試
 
 目前支援：
 
+- L2 / L3 設備分類
 - DNS、NTP、SSH、VTY 與本地使用者的全域預設值
 - VLAN 定義
 - routed interface
@@ -41,6 +42,26 @@ tests/                 單元測試
 - 基本 OSPF network statement
 
 密碼或敏感資料可以用環境變數引用，例如 `${CISCO_NETADMIN_SECRET}`。如果環境變數沒有設定，產生的 config 會顯示 `__MISSING_ENV_CISCO_NETADMIN_SECRET__`，方便在部署前發現問題。
+
+### L2 / L3 分類
+
+每台設備可以設定 `device_layer`：
+
+```json
+"device_layer": "L2"
+```
+
+或：
+
+```json
+"device_layer": "L3"
+```
+
+L2 設備會把 `0.0.0.0/0` static route 產生成 `ip default-gateway`，並禁止 OSPF、routed interface、loopback interface。L3 設備則會照一般 router / L3 switch 方式產生 static route 與 OSPF。
+
+### 輸入限制
+
+為了避免產生不能貼進 Cisco CLI 的設定，產生器會擋掉中文、全形符號、換行、驚嘆號與常見非指令字元。Hostname、interface name、VLAN name、description、username、secret 等會進入 config 的欄位都會做檢查。
 
 ## 常用指令
 

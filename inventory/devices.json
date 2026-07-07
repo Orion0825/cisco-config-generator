@@ -23,6 +23,7 @@
     {
       "hostname": "BRANCH-R1",
       "role": "branch-router",
+      "device_layer": "L3",
       "platform": "ios",
       "interfaces": [
         {
@@ -81,6 +82,7 @@
     {
       "hostname": "ACCESS-SW1",
       "role": "access-switch",
+      "device_layer": "L2",
       "platform": "ios",
       "vlans": [
         {

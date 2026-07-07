@@ -18,6 +18,7 @@ const sampleInventory = {
     {
       hostname: "BRANCH-R1",
       role: "branch-router",
+      device_layer: "L3",
       platform: "ios",
       interfaces: [
         { name: "GigabitEthernet0/0", description: "WAN uplink", mode: "routed", address: "203.0.113.2/30" },
@@ -47,6 +48,7 @@ const sampleInventory = {
     {
       hostname: "ACCESS-SW1",
       role: "access-switch",
+      device_layer: "L2",
       platform: "ios",
       vlans: [
         { id: 10, name: "USERS" },
@@ -78,6 +80,18 @@ const sampleInventory = {
   ],
 };
 
+const DEVICE_LAYERS = new Set(["L2", "L3"]);
+const CLI_SAFE_PATTERN = /^[A-Za-z0-9 _./:,@#()+=$*{}-]*$/;
+const HOSTNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/;
+const INTERFACE_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9/_.:-]*$/;
+const USERNAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
+const SANITIZE_RULES = {
+  hostname: /[^A-Za-z0-9_.-]/g,
+  interface: /[^A-Za-z0-9/_.:-]/g,
+  ipList: /[^A-Za-z0-9.,:_/-]/g,
+  cliText: /[^A-Za-z0-9 _./:,@#()+=$*{}-]/g,
+};
+
 let state = structuredClone(sampleInventory);
 let selectedDeviceIndex = 0;
 let selectedOutputFile = "";
@@ -99,7 +113,10 @@ const elements = {
   defaultsForm: document.querySelector("#defaultsForm"),
   vlanRows: document.querySelector("#vlanRows"),
   interfaceRows: document.querySelector("#interfaceRows"),
+  staticRouteSection: document.querySelector("#staticRouteSection"),
+  staticRouteTitle: document.querySelector("#staticRouteTitle"),
   staticRouteRows: document.querySelector("#staticRouteRows"),
+  ospfSection: document.querySelector("#ospfSection"),
   ospfEnabled: document.querySelector("#ospfEnabled"),
   ospfFields: document.querySelector("#ospfFields"),
   ospfProcessId: document.querySelector("#ospfProcessId"),
@@ -131,6 +148,7 @@ function normalizeInventory(inventory) {
   normalized.defaults.local_users ||= [];
   normalized.devices ||= [];
   normalized.devices.forEach((device) => {
+    device.device_layer = normalizedDeviceLayer(device);
     device.vlans ||= [];
     device.interfaces ||= [];
     device.routing ||= {};
@@ -143,6 +161,7 @@ function newDevice() {
   return {
     hostname: `DEVICE-${state.devices.length + 1}`,
     role: "network-device",
+    device_layer: "L3",
     platform: "ios",
     vlans: [],
     interfaces: [],
@@ -170,7 +189,7 @@ function renderDeviceList() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `device-item${index === selectedDeviceIndex ? " active" : ""}`;
-    button.innerHTML = `<span>${escapeHtml(device.hostname || "未命名設備")}</span><span>${escapeHtml(device.role || device.platform || "ios")}</span>`;
+    button.innerHTML = `<span>${escapeHtml(device.hostname || "未命名設備")}</span><span>${escapeHtml(normalizedDeviceLayer(device))} · ${escapeHtml(device.role || device.platform || "ios")}</span>`;
     button.addEventListener("click", () => {
       selectedDeviceIndex = index;
       selectedOutputFile = "";
@@ -193,8 +212,10 @@ function renderDeviceForm() {
   const device = currentDevice();
   setFormValue(elements.deviceForm, "hostname", device.hostname || "");
   setFormValue(elements.deviceForm, "role", device.role || "");
+  setFormValue(elements.deviceForm, "device_layer", normalizedDeviceLayer(device));
   setFormValue(elements.deviceForm, "platform", device.platform || "ios");
   setFormValue(elements.deviceForm, "domain_name", device.domain_name || "");
+  const isL2 = normalizedDeviceLayer(device) === "L2";
 
   elements.vlanRows.innerHTML = "";
   device.vlans.forEach((vlan, index) => {
@@ -223,6 +244,8 @@ function renderDeviceForm() {
   });
 
   const staticRoutes = device.routing?.static || [];
+  elements.staticRouteTitle.textContent = isL2 ? "L2 Default Gateway" : "Static Route";
+  elements.addStaticRouteBtn.textContent = isL2 ? "設定 Gateway" : "新增路由";
   elements.staticRouteRows.innerHTML = "";
   staticRoutes.forEach((route, index) => {
     elements.staticRouteRows.appendChild(rowElement("static", index, [
@@ -231,7 +254,8 @@ function renderDeviceForm() {
     ]));
   });
 
-  const ospf = device.routing?.ospf;
+  elements.ospfSection.classList.toggle("hidden", isL2);
+  const ospf = isL2 ? undefined : device.routing?.ospf;
   elements.ospfEnabled.checked = !!ospf;
   elements.ospfFields.classList.toggle("hidden", !ospf);
   elements.ospfProcessId.value = ospf?.process_id ?? 1;
@@ -378,14 +402,41 @@ function setFormValue(form, name, value) {
   }
 }
 
+function sanitizeTargetInput(target) {
+  if (!(target instanceof HTMLInputElement) || target.type !== "text") return;
+  const original = target.value;
+  let cleaned = original;
+  const key = target.dataset.key || target.name || target.id;
+  const rowKind = target.closest(".row")?.dataset.kind;
+
+  if (key === "hostname") cleaned = original.replace(SANITIZE_RULES.hostname, "");
+  else if (key === "name" && rowKind === "interface") cleaned = original.replace(SANITIZE_RULES.interface, "");
+  else if (["address", "destination", "next_hop", "prefix", "ospfRouterId"].includes(key)) cleaned = original.replace(SANITIZE_RULES.ipList, "");
+  else if (["name_servers", "ntp_servers"].includes(key)) cleaned = original.replace(SANITIZE_RULES.ipList, "");
+  else cleaned = original.replace(SANITIZE_RULES.cliText, "");
+
+  if (cleaned !== original) {
+    const cursor = target.selectionStart ?? cleaned.length;
+    target.value = cleaned;
+    target.setSelectionRange(Math.max(0, cursor - (original.length - cleaned.length)), Math.max(0, cursor - (original.length - cleaned.length)));
+    elements.statusText.textContent = "已移除中文或非 Cisco CLI 安全字元";
+  }
+}
+
 function updateDeviceFromForm(event) {
   const target = event.target;
   if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+  sanitizeTargetInput(target);
   const device = currentDevice();
   if (target.name) {
     device[target.name] = target.value.trim();
+    if (target.name === "device_layer") {
+      device.device_layer = normalizedDeviceLayer(device);
+      if (device.device_layer === "L2" && device.routing?.ospf) delete device.routing.ospf;
+    }
     if (target.name === "hostname") selectedOutputFile = "";
     renderDeviceList();
+    if (target.name === "device_layer") renderForms();
     renderOutput();
   }
 }
@@ -393,6 +444,7 @@ function updateDeviceFromForm(event) {
 function updateDefaultsFromForm(event) {
   const target = event.target;
   if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+  sanitizeTargetInput(target);
   const defaults = state.defaults;
   if (target.name === "domain_name") defaults.domain_name = target.value.trim();
   if (target.name === "name_servers") defaults.name_servers = splitList(target.value);
@@ -415,6 +467,7 @@ function updateDefaultsFromForm(event) {
 function updateRowFromEvent(event) {
   const target = event.target;
   if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+  sanitizeTargetInput(target);
   const row = target.closest(".row");
   if (!row) return;
   const kind = row.dataset.kind;
@@ -482,9 +535,11 @@ function renderDevice(defaults, device) {
   const lines = [];
   const add = (line = "") => lines.push(line);
   const hostname = required(device.hostname, "hostname");
+  const layer = normalizedDeviceLayer(device);
 
   add("!");
   add("! Generated by configgen web UI. Edit inventory/devices.json, then regenerate.");
+  add(`! Device layer: ${layer}`);
   add("!");
   add(`hostname ${hostname}`);
   add("no ip domain-lookup");
@@ -517,7 +572,7 @@ function renderDevice(defaults, device) {
     });
 
   (device.interfaces || []).forEach((iface) => renderInterface(lines, iface));
-  renderRouting(lines, device.routing || {});
+  renderRouting(lines, device.routing || {}, layer);
   add("line vty 0 4");
   add(users.length ? " login local" : " no login");
   add(` transport input ${device.vty?.transport || defaults.vty?.transport || "ssh"}`);
@@ -556,7 +611,16 @@ function renderInterface(lines, iface) {
   lines.push("!");
 }
 
-function renderRouting(lines, routing) {
+function renderRouting(lines, routing, layer = "L3") {
+  if (layer === "L2") {
+    (routing.static || []).forEach((route) => {
+      const prefix = parseIpv4Prefix(required(route.destination, "L2 default gateway destination"));
+      if (prefix.length === 0) lines.push(`ip default-gateway ${required(route.next_hop, "L2 default gateway")}`);
+    });
+    if ((routing.static || []).length) lines.push("!");
+    return;
+  }
+
   (routing.static || []).forEach((route) => {
     const prefix = parseIpv4Prefix(required(route.destination, "static route destination"));
     lines.push(`ip route ${intToIp(prefix.network)} ${intToIp(prefix.mask)} ${required(route.next_hop, "static route next hop")}`);
@@ -576,11 +640,28 @@ function renderRouting(lines, routing) {
 
 function validateInventory(inventory) {
   const errors = [];
+  const defaults = inventory.defaults || {};
+  validateCliSafe(defaults.domain_name, "defaults.domain_name", errors);
+  (defaults.name_servers || []).forEach((value, index) => validateCliSafe(value, `defaults.name_servers[${index}]`, errors));
+  (defaults.ntp_servers || []).forEach((value, index) => validateCliSafe(value, `defaults.ntp_servers[${index}]`, errors));
+  validateCliSafe(defaults.vty?.transport, "defaults.vty.transport", errors);
+  (defaults.local_users || []).forEach((user, index) => {
+    if (user.name && !USERNAME_PATTERN.test(user.name)) errors.push(`defaults.local_users[${index}].name 含非 CLI 安全字元`);
+    validateCliSafe(user.secret_type, `defaults.local_users[${index}].secret_type`, errors);
+    validateCliSafe(user.secret, `defaults.local_users[${index}].secret`, errors);
+  });
+
   if (!Array.isArray(inventory.devices) || !inventory.devices.length) errors.push("devices 必須至少有一台設備");
   const hostnames = new Set();
 
   (inventory.devices || []).forEach((device, deviceIndex) => {
+    const layer = normalizedDeviceLayer(device);
     if (!device.hostname) errors.push(`devices[${deviceIndex}].hostname 必填`);
+    if (device.hostname && !HOSTNAME_PATTERN.test(device.hostname)) errors.push(`${device.hostname}: hostname 含中文或非 CLI 安全字元`);
+    if (!DEVICE_LAYERS.has(layer)) errors.push(`${device.hostname}: device_layer 必須是 L2 或 L3`);
+    validateCliSafe(device.role, `${device.hostname}.role`, errors);
+    validateCliSafe(device.platform, `${device.hostname}.platform`, errors);
+    validateCliSafe(device.domain_name, `${device.hostname}.domain_name`, errors);
     if (device.hostname && hostnames.has(device.hostname)) errors.push(`hostname 重複: ${device.hostname}`);
     hostnames.add(device.hostname);
 
@@ -588,6 +669,7 @@ function validateInventory(inventory) {
     (device.vlans || []).forEach((vlan, vlanIndex) => {
       const id = Number(vlan.id);
       if (!Number.isInteger(id) || id < 1 || id > 4094) errors.push(`${device.hostname}.vlans[${vlanIndex}].id 必須是 1-4094`);
+      validateCliSafe(vlan.name, `${device.hostname}.vlans[${vlanIndex}].name`, errors);
       if (vlans.has(id)) errors.push(`${device.hostname}.vlans[${vlanIndex}].id 重複`);
       vlans.add(id);
     });
@@ -595,22 +677,47 @@ function validateInventory(inventory) {
     const interfaces = new Set();
     (device.interfaces || []).forEach((iface, ifaceIndex) => {
       if (!iface.name) errors.push(`${device.hostname}.interfaces[${ifaceIndex}].name 必填`);
+      if (iface.name && !INTERFACE_NAME_PATTERN.test(iface.name)) errors.push(`${device.hostname}.${iface.name}: interface name 含非 CLI 安全字元`);
       if (iface.name && interfaces.has(iface.name)) errors.push(`${device.hostname}.interfaces[${ifaceIndex}].name 重複`);
       interfaces.add(iface.name);
+      validateCliSafe(iface.description, `${device.hostname}.${iface.name}.description`, errors);
+      if (layer === "L2" && ["routed", "loopback"].includes(iface.mode)) errors.push(`${device.hostname}.${iface.name}: L2 設備不允許 ${iface.mode} 介面`);
       if (iface.address) validatePrefix(iface.address, `${device.hostname}.${iface.name}.address`, errors);
       if (iface.mode === "access" && !iface.access_vlan) errors.push(`${device.hostname}.${iface.name}.access_vlan 必填`);
     });
 
     (device.routing?.static || []).forEach((route, routeIndex) => {
-      validatePrefix(route.destination, `${device.hostname}.routing.static[${routeIndex}].destination`, errors);
+      const prefix = parsePrefixForValidation(route.destination, `${device.hostname}.routing.static[${routeIndex}].destination`, errors);
+      if (layer === "L2" && prefix && prefix.length !== 0) errors.push(`${device.hostname}: L2 設備只允許 0.0.0.0/0 作為管理閘道`);
       validateIp(route.next_hop, `${device.hostname}.routing.static[${routeIndex}].next_hop`, errors);
     });
 
+    if (layer === "L2" && device.routing?.ospf) errors.push(`${device.hostname}: L2 設備不允許 OSPF`);
+    if (device.routing?.ospf) {
+      const processId = Number(device.routing.ospf.process_id || 1);
+      if (!Number.isInteger(processId) || processId < 1) errors.push(`${device.hostname}.routing.ospf.process_id 必須大於 0`);
+      if (device.routing.ospf.router_id) validateIp(device.routing.ospf.router_id, `${device.hostname}.routing.ospf.router_id`, errors);
+    }
     (device.routing?.ospf?.networks || []).forEach((network, networkIndex) => {
       validatePrefix(network.prefix, `${device.hostname}.routing.ospf.networks[${networkIndex}].prefix`, errors);
+      const area = Number(network.area ?? 0);
+      if (!Number.isInteger(area) || area < 0) errors.push(`${device.hostname}.routing.ospf.networks[${networkIndex}].area 必須是 0 或正整數`);
     });
   });
   return errors;
+}
+
+function validateCliSafe(value, label, errors) {
+  if (value && !CLI_SAFE_PATTERN.test(String(value))) errors.push(`${label} 含中文或非 Cisco CLI 安全字元`);
+}
+
+function parsePrefixForValidation(value, label, errors) {
+  try {
+    return parseIpv4Prefix(value);
+  } catch {
+    errors.push(`${label} 不是有效 IPv4 prefix`);
+    return null;
+  }
 }
 
 function validatePrefix(value, label, errors) {
@@ -646,7 +753,7 @@ function parseIpv4Prefix(value) {
   const mask = length === 0 ? 0 : (0xffffffff << (32 - length)) >>> 0;
   const network = (ip & mask) >>> 0;
   const hostmask = (~mask) >>> 0;
-  return { ip, mask, network, hostmask };
+  return { ip, mask, network, hostmask, length };
 }
 
 function ipToInt(value) {
@@ -675,6 +782,11 @@ function resolveEnv(value) {
 
 function safeFilename(value) {
   return String(value).replace(/[^A-Za-z0-9_.-]+/g, "_").replace(/^[._]+|[._]+$/g, "") || "device";
+}
+
+function normalizedDeviceLayer(device) {
+  const layer = String(device.device_layer || "L3").toUpperCase();
+  return DEVICE_LAYERS.has(layer) ? layer : "L3";
 }
 
 function splitList(value) {
@@ -801,9 +913,16 @@ elements.addInterfaceBtn.addEventListener("click", () => {
 });
 
 elements.addStaticRouteBtn.addEventListener("click", () => {
-  currentDevice().routing ||= {};
-  currentDevice().routing.static ||= [];
-  currentDevice().routing.static.push({ destination: "0.0.0.0/0", next_hop: "10.0.0.254" });
+  const device = currentDevice();
+  device.routing ||= {};
+  device.routing.static ||= [];
+  if (normalizedDeviceLayer(device) === "L2") {
+    if (!device.routing.static.some((route) => route.destination === "0.0.0.0/0")) {
+      device.routing.static.push({ destination: "0.0.0.0/0", next_hop: "10.0.0.254" });
+    }
+  } else {
+    device.routing.static.push({ destination: "0.0.0.0/0", next_hop: "10.0.0.254" });
+  }
   render();
 });
 

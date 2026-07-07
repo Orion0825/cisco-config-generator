@@ -301,6 +301,7 @@ const elements = {
   addNatRuleBtn: document.querySelector("#addNatRuleBtn"),
   outputCount: document.querySelector("#outputCount"),
   outputSelect: document.querySelector("#outputSelect"),
+  configDropZone: document.querySelector("#configDropZone"),
   configOutput: document.querySelector("#configOutput"),
   copyConfigBtn: document.querySelector("#copyConfigBtn"),
   downloadConfigBtn: document.querySelector("#downloadConfigBtn"),
@@ -1977,6 +1978,56 @@ function normalizeConfigText(value) {
   return String(value || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
+async function handleConfigFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) {
+    elements.statusText.textContent = "沒有選到 CFG/TXT 檔案";
+    return;
+  }
+
+  const generatedConfigs = renderInventory(state).configs;
+  const existingNames = new Set([...Object.keys(generatedConfigs), ...Object.keys(uploadedConfigs)]);
+  const accepted = [];
+  const skipped = [];
+
+  for (const file of files) {
+    const filename = safeUploadFilename(file.name);
+    if (!hasSupportedConfigExtension(filename)) {
+      skipped.push(`${filename}: 只支援 .cfg 或 .txt`);
+      continue;
+    }
+
+    try {
+      const content = normalizeConfigText(await file.text());
+      if (!content.trim()) {
+        skipped.push(`${filename}: 檔案是空的`);
+        continue;
+      }
+
+      const uniqueName = uniqueFilename(filename, existingNames);
+      existingNames.add(uniqueName);
+      uploadedConfigs[uniqueName] = content.endsWith("\n") ? content : `${content}\n`;
+      accepted.push(uniqueName);
+    } catch (error) {
+      skipped.push(`${filename}: 讀取失敗 ${error.message}`);
+    }
+  }
+
+  uploadWarnings = [
+    ...accepted.map((filename) => `${filename}: 已上傳到輸出區`),
+    ...skipped,
+  ];
+  if (accepted.length) selectedOutputFile = accepted[accepted.length - 1];
+  renderOutput();
+  if (accepted.length) {
+    focusOutputPanel();
+    elements.statusText.textContent = `已上傳 ${accepted.length} 份 CFG/TXT`;
+  } else {
+    elements.statusText.textContent = "沒有可上傳的 CFG/TXT 檔案";
+  }
+  flashElement(elements.outputPanel);
+}
+
 function download(filename, content, type = "text/plain") {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
@@ -2070,48 +2121,33 @@ elements.fileInput.addEventListener("change", async () => {
   }
 });
 
-elements.uploadConfigBtn.addEventListener("click", () => elements.configFileInput.click());
+elements.uploadConfigBtn.addEventListener("click", () => {
+  elements.statusText.textContent = "請選擇 .cfg 或 .txt 檔案";
+});
+elements.uploadConfigBtn.addEventListener("keydown", (event) => {
+  if (!["Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  elements.configFileInput.click();
+});
 elements.configFileInput.addEventListener("change", async () => {
-  const files = Array.from(elements.configFileInput.files || []);
-  if (!files.length) return;
-
-  const generatedConfigs = renderInventory(state).configs;
-  const existingNames = new Set([...Object.keys(generatedConfigs), ...Object.keys(uploadedConfigs)]);
-  const accepted = [];
-  const skipped = [];
-
-  for (const file of files) {
-    const filename = safeUploadFilename(file.name);
-    if (!hasSupportedConfigExtension(filename)) {
-      skipped.push(`${filename}: 只支援 .cfg 或 .txt`);
-      continue;
-    }
-
-    const content = normalizeConfigText(await file.text());
-    if (!content.trim()) {
-      skipped.push(`${filename}: 檔案是空的`);
-      continue;
-    }
-
-    const uniqueName = uniqueFilename(filename, existingNames);
-    existingNames.add(uniqueName);
-    uploadedConfigs[uniqueName] = content.endsWith("\n") ? content : `${content}\n`;
-    accepted.push(uniqueName);
-  }
-
-  uploadWarnings = [
-    ...accepted.map((filename) => `${filename}: 已上傳到輸出區`),
-    ...skipped,
-  ];
-  if (accepted.length) selectedOutputFile = accepted[accepted.length - 1];
-  renderOutput();
-  if (accepted.length) {
-    elements.statusText.textContent = `已上傳 ${accepted.length} 份 CFG/TXT`;
-    flashElement(elements.outputPanel);
-  } else {
-    elements.statusText.textContent = "沒有可上傳的 CFG/TXT 檔案";
-  }
+  await handleConfigFiles(elements.configFileInput.files);
   elements.configFileInput.value = "";
+});
+
+elements.configDropZone.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  elements.configDropZone.classList.add("drag-active");
+  elements.statusText.textContent = "放開即可上傳 CFG/TXT";
+});
+
+elements.configDropZone.addEventListener("dragleave", () => {
+  elements.configDropZone.classList.remove("drag-active");
+});
+
+elements.configDropZone.addEventListener("drop", async (event) => {
+  event.preventDefault();
+  elements.configDropZone.classList.remove("drag-active");
+  await handleConfigFiles(event.dataTransfer?.files);
 });
 
 elements.exportBtn.addEventListener("click", () => {

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cisco Config Generator</title>
-    <link rel="stylesheet" href="styles.css?v=20260707-upload-configs">
+    <link rel="stylesheet" href="styles.css?v=20260707-upload-fix">
   </head>
   <body>
     <div class="app-shell">
@@ -27,9 +27,9 @@
           </div>
           <div class="toolbar">
             <input id="fileInput" type="file" accept="application/json,.json" hidden>
-            <input id="configFileInput" type="file" accept=".cfg,.txt,text/plain" multiple hidden>
+            <input id="configFileInput" class="file-input-native" type="file" accept=".cfg,.txt,text/plain" multiple>
             <button id="importBtn" type="button">匯入 JSON</button>
-            <button id="uploadConfigBtn" type="button">上傳 CFG/TXT</button>
+            <label id="uploadConfigBtn" class="toolbar-button upload-config-label" for="configFileInput" role="button" tabindex="0">上傳 CFG/TXT</label>
             <button id="exportBtn" type="button">匯出 JSON</button>
             <button id="addDeviceBtn" type="button">新增設備</button>
           </div>
@@ -406,6 +406,10 @@
             <span>Cisco CLI 可複製貼上區</span>
             <small>產生後可直接貼到 Console / SSH</small>
           </div>
+          <label id="configDropZone" class="upload-drop-zone" for="configFileInput">
+            <strong>上傳或拖放 CFG/TXT</strong>
+            <small>支援 .cfg / .txt，多檔會加入右側輸出清單</small>
+          </label>
           <textarea id="configOutput" spellcheck="false" readonly aria-label="Cisco CLI 可複製貼上設定"></textarea>
           <div class="output-actions">
             <button id="copyConfigBtn" type="button">複製到剪貼簿</button>
@@ -417,6 +421,6 @@
       </main>
     </div>
 
-    <script src="app.js?v=20260707-upload-configs"></script>
+    <script src="app.js?v=20260707-upload-fix"></script>
   </body>
 </html>

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cisco Config Generator</title>
-    <link rel="stylesheet" href="styles.css?v=20260707-ccie-complete">
+    <link rel="stylesheet" href="styles.css?v=20260707-upload-configs">
   </head>
   <body>
     <div class="app-shell">
@@ -27,7 +27,9 @@
           </div>
           <div class="toolbar">
             <input id="fileInput" type="file" accept="application/json,.json" hidden>
+            <input id="configFileInput" type="file" accept=".cfg,.txt,text/plain" multiple hidden>
             <button id="importBtn" type="button">匯入 JSON</button>
+            <button id="uploadConfigBtn" type="button">上傳 CFG/TXT</button>
             <button id="exportBtn" type="button">匯出 JSON</button>
             <button id="addDeviceBtn" type="button">新增設備</button>
           </div>
@@ -408,12 +410,13 @@
           <div class="output-actions">
             <button id="copyConfigBtn" type="button">複製到剪貼簿</button>
             <button id="downloadConfigBtn" type="button">下載 CFG</button>
+            <button id="clearUploadedBtn" type="button">清除上傳</button>
           </div>
           <div id="messages" class="messages" aria-live="polite"></div>
         </aside>
       </main>
     </div>
 
-    <script src="app.js?v=20260707-ccie-complete"></script>
+    <script src="app.js?v=20260707-upload-configs"></script>
   </body>
 </html>

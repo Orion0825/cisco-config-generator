@@ -208,6 +208,8 @@ let state = structuredClone(sampleInventory);
 let selectedDeviceIndex = 0;
 let selectedOutputFile = "";
 let activeTab = "device";
+let uploadedConfigs = {};
+let uploadWarnings = [];
 
 const elements = {
   statusText: document.querySelector("#statusText"),
@@ -219,7 +221,9 @@ const elements = {
   introOutputBtn: document.querySelector("#introOutputBtn"),
   introCopyBtn: document.querySelector("#introCopyBtn"),
   fileInput: document.querySelector("#fileInput"),
+  configFileInput: document.querySelector("#configFileInput"),
   importBtn: document.querySelector("#importBtn"),
+  uploadConfigBtn: document.querySelector("#uploadConfigBtn"),
   exportBtn: document.querySelector("#exportBtn"),
   addDeviceBtn: document.querySelector("#addDeviceBtn"),
   duplicateDeviceBtn: document.querySelector("#duplicateDeviceBtn"),
@@ -300,6 +304,7 @@ const elements = {
   configOutput: document.querySelector("#configOutput"),
   copyConfigBtn: document.querySelector("#copyConfigBtn"),
   downloadConfigBtn: document.querySelector("#downloadConfigBtn"),
+  clearUploadedBtn: document.querySelector("#clearUploadedBtn"),
   messages: document.querySelector("#messages"),
 };
 
@@ -707,22 +712,45 @@ function renderDefaultsForm() {
 
 function renderOutput() {
   const result = renderInventory(state);
-  const files = Object.keys(result.configs);
-  selectedOutputFile = selectedOutputFile && result.configs[selectedOutputFile] ? selectedOutputFile : files[0] || "";
+  const generatedFiles = Object.keys(result.configs);
+  const uploadedFiles = Object.keys(uploadedConfigs);
+  const configs = { ...result.configs, ...uploadedConfigs };
+  const files = [...generatedFiles, ...uploadedFiles];
+  selectedOutputFile = selectedOutputFile && configs[selectedOutputFile] ? selectedOutputFile : files[0] || "";
   elements.outputSelect.innerHTML = "";
 
-  files.forEach((filename) => {
+  const addOption = (container, filename, source) => {
     const option = document.createElement("option");
     option.value = filename;
-    option.textContent = filename;
-    elements.outputSelect.appendChild(option);
-  });
+    option.textContent = `${filename} - ${source}`;
+    container.appendChild(option);
+  };
+
+  if (generatedFiles.length) {
+    const group = document.createElement("optgroup");
+    group.label = "產生器輸出";
+    generatedFiles.forEach((filename) => addOption(group, filename, "產生"));
+    elements.outputSelect.appendChild(group);
+  }
+
+  if (uploadedFiles.length) {
+    const group = document.createElement("optgroup");
+    group.label = "上傳檔案";
+    uploadedFiles.forEach((filename) => addOption(group, filename, "上傳"));
+    elements.outputSelect.appendChild(group);
+  }
 
   elements.outputSelect.value = selectedOutputFile;
-  elements.configOutput.value = result.configs[selectedOutputFile] || "";
+  elements.configOutput.value = configs[selectedOutputFile] || "";
   elements.outputCount.textContent = String(files.length);
-  elements.statusText.textContent = result.errors.length ? "設定檔需要修正" : `已產生 ${files.length} 份設定檔`;
-  renderMessages(result.errors, result.warnings);
+  if (result.errors.length) {
+    elements.statusText.textContent = "設定檔需要修正";
+  } else if (uploadedFiles.length) {
+    elements.statusText.textContent = `已產生 ${generatedFiles.length} 份，另上傳 ${uploadedFiles.length} 份 CFG/TXT`;
+  } else {
+    elements.statusText.textContent = `已產生 ${generatedFiles.length} 份設定檔`;
+  }
+  renderMessages(result.errors, [...result.warnings, ...uploadWarnings]);
 }
 
 function renderMessages(errors, warnings) {
@@ -1921,6 +1949,34 @@ function escapeHtml(value) {
   })[char]);
 }
 
+function safeUploadFilename(value) {
+  const filename = String(value || "uploaded.cfg").split(/[/\\]/).pop() || "uploaded.cfg";
+  const cleaned = filename.replace(/[^A-Za-z0-9_.-]+/g, "_").replace(/^[._]+|[._]+$/g, "");
+  return cleaned || "uploaded.cfg";
+}
+
+function uniqueFilename(filename, existingNames) {
+  if (!existingNames.has(filename)) return filename;
+  const dotIndex = filename.lastIndexOf(".");
+  const base = dotIndex > 0 ? filename.slice(0, dotIndex) : filename;
+  const extension = dotIndex > 0 ? filename.slice(dotIndex) : "";
+  let index = 2;
+  let candidate = `${base}-${index}${extension}`;
+  while (existingNames.has(candidate)) {
+    index += 1;
+    candidate = `${base}-${index}${extension}`;
+  }
+  return candidate;
+}
+
+function hasSupportedConfigExtension(filename) {
+  return /\.(cfg|txt)$/i.test(filename);
+}
+
+function normalizeConfigText(value) {
+  return String(value || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
 function download(filename, content, type = "text/plain") {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
@@ -2012,6 +2068,50 @@ elements.fileInput.addEventListener("change", async () => {
   } finally {
     elements.fileInput.value = "";
   }
+});
+
+elements.uploadConfigBtn.addEventListener("click", () => elements.configFileInput.click());
+elements.configFileInput.addEventListener("change", async () => {
+  const files = Array.from(elements.configFileInput.files || []);
+  if (!files.length) return;
+
+  const generatedConfigs = renderInventory(state).configs;
+  const existingNames = new Set([...Object.keys(generatedConfigs), ...Object.keys(uploadedConfigs)]);
+  const accepted = [];
+  const skipped = [];
+
+  for (const file of files) {
+    const filename = safeUploadFilename(file.name);
+    if (!hasSupportedConfigExtension(filename)) {
+      skipped.push(`${filename}: 只支援 .cfg 或 .txt`);
+      continue;
+    }
+
+    const content = normalizeConfigText(await file.text());
+    if (!content.trim()) {
+      skipped.push(`${filename}: 檔案是空的`);
+      continue;
+    }
+
+    const uniqueName = uniqueFilename(filename, existingNames);
+    existingNames.add(uniqueName);
+    uploadedConfigs[uniqueName] = content.endsWith("\n") ? content : `${content}\n`;
+    accepted.push(uniqueName);
+  }
+
+  uploadWarnings = [
+    ...accepted.map((filename) => `${filename}: 已上傳到輸出區`),
+    ...skipped,
+  ];
+  if (accepted.length) selectedOutputFile = accepted[accepted.length - 1];
+  renderOutput();
+  if (accepted.length) {
+    elements.statusText.textContent = `已上傳 ${accepted.length} 份 CFG/TXT`;
+    flashElement(elements.outputPanel);
+  } else {
+    elements.statusText.textContent = "沒有可上傳的 CFG/TXT 檔案";
+  }
+  elements.configFileInput.value = "";
 });
 
 elements.exportBtn.addEventListener("click", () => {
@@ -2339,6 +2439,19 @@ elements.copyConfigBtn.addEventListener("click", async () => {
 elements.downloadConfigBtn.addEventListener("click", () => {
   if (!selectedOutputFile) return;
   download(selectedOutputFile, elements.configOutput.value);
+});
+
+elements.clearUploadedBtn.addEventListener("click", () => {
+  const count = Object.keys(uploadedConfigs).length;
+  if (!count) {
+    elements.statusText.textContent = "目前沒有上傳檔案";
+    return;
+  }
+  uploadedConfigs = {};
+  uploadWarnings = [];
+  selectedOutputFile = "";
+  renderOutput();
+  elements.statusText.textContent = `已清除 ${count} 份上傳檔案`;
 });
 
 render();

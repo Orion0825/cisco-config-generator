@@ -240,6 +240,8 @@ web/index.html
 
 打開後可以直接新增設備、編輯 VLAN/interface/static route/OSPF/EIGRP/BGP，也能在「進階」分頁直接調整 VRF、Prefix-list、Route-map、STP、DHCP、ACL、NAT。Interface 表格也支援 VRF、NAT role、IP helper、HSRP、ACL 套用、EtherChannel、Port Security 與 BPDU Guard。BGP neighbor 表格支援 route-map、prefix-list、next-hop-self、send-community 與 soft-reconfiguration。編輯後右側會即時產生 `.cfg`，也可以匯入或匯出 `devices.json`。
 
+如果手上已經有 Cisco 設定檔，也可以按「上傳 CFG/TXT」一次載入一個或多個 `.cfg` / `.txt`。上傳後檔案會出現在右側輸出選單的「上傳檔案」群組，能直接檢查、複製貼上或重新下載；這不會覆蓋目前的 inventory。
+
 GUI 是純前端靜態檔案，不需要 npm、Flask 或其他後端服務。若要和 CLI 流程接軌，建議在 GUI 匯出 JSON 後覆蓋 `inventory/devices.json`，再執行：
 
 ```bash

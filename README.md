@@ -257,6 +257,28 @@ https://orion0825.github.io/cisco-config-generator/
 
 若第一次打不開，請到 GitHub repo 的 `Settings` -> `Pages`，確認 Source 設成 `GitHub Actions`，然後到 `Actions` 手動執行 `Deploy Web GUI`。
 
+## 桌面版打包
+
+此專案可打包成 macOS 與 Windows 桌面軟體。GitHub 會在更新 `web/`、`electron/` 或 `package.json` 後自動執行 `Build Desktop Apps` workflow，產出可下載的安裝檔。
+
+手動本機測試：
+
+```bash
+npm install
+npm run desktop
+```
+
+本機打包同平台版本：
+
+```bash
+npm run dist:mac
+npm run dist:win
+```
+
+macOS 會輸出 `.dmg` 與 `.zip`，Windows 會輸出 `.exe` 安裝檔與 portable 版本。未做 Apple / Microsoft 簽章時，第一次開啟可能會出現安全提醒；正式發佈前建議再補 code signing。
+
+要同時取得 macOS 與 Windows，建議直接用 GitHub Actions。進入 repo 的 `Actions` -> `Build Desktop Apps` -> 最新一次成功執行，下載 `Cisco-Config-Generator-macOS` 或 `Cisco-Config-Generator-Windows` artifact。
+
 ## GitHub / VS Code 流程
 
 已經建立 GitHub repo 後，日常流程建議如下：

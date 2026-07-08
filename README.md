@@ -242,6 +242,8 @@ web/index.html
 
 如果手上已經有 Cisco 設定檔，也可以按「上傳 CFG/TXT」或拖曳到右側上傳區，一次載入一個或多個 `.cfg` / `.txt`。上傳後會解析 hostname、VLAN、interface、static route、OSPF/EIGRP/BGP、VRF、ACL、NAT 等常見設定，並同步到左側設備列表與中央設定區；原始檔案也會出現在右側輸出選單的「上傳檔案」群組，能直接檢查、複製貼上或重新下載。
 
+GUI 上方也有「用戶」暫存工作區。輸入英文/數字用戶名後登入，設備資料、目前上傳的 CFG/TXT、選到的輸出檔與目前分頁會暫存在瀏覽器或桌面 App 的 localStorage；下次用同一個用戶名開啟會自動載入。這是本機暫存功能，不是雲端帳號，換電腦或清除瀏覽器資料後不會保留。
+
 GUI 是純前端靜態檔案，不需要 npm、Flask 或其他後端服務。若要和 CLI 流程接軌，建議在 GUI 匯出 JSON 後覆蓋 `inventory/devices.json`，再執行：
 
 ```bash

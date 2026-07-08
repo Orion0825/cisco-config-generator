@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cisco Config Generator</title>
-    <link rel="stylesheet" href="styles.css?v=20260707-import-config">
+    <link rel="stylesheet" href="styles.css?v=20260708-user-store">
   </head>
   <body>
     <div class="app-shell">
@@ -19,6 +19,17 @@
           </div>
         </div>
         <div class="topbar-actions">
+          <div class="profile-session" aria-label="用戶暫存工作區">
+            <label class="profile-name-field">
+              <span>用戶</span>
+              <input id="profileNameInput" type="text" autocomplete="username" maxlength="32" placeholder="Orion">
+            </label>
+            <button id="profileLoginBtn" type="button">登入</button>
+            <select id="profileSelect" aria-label="切換暫存用戶"></select>
+            <button id="profileSaveBtn" type="button">暫存</button>
+            <button id="profileDeleteBtn" type="button" class="danger">刪除</button>
+            <small id="profileStatus">未登入</small>
+          </div>
           <div class="quick-stats" aria-label="Inventory summary">
             <span><strong id="statDevices">0</strong><small>設備</small></span>
             <span><strong id="statL2">0</strong><small>L2</small></span>
@@ -421,6 +432,6 @@
       </main>
     </div>
 
-    <script src="app.js?v=20260707-import-config"></script>
+    <script src="app.js?v=20260708-user-store"></script>
   </body>
 </html>

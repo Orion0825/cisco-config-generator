@@ -197,6 +197,10 @@ const CLI_SAFE_PATTERN = /^[A-Za-z0-9 _./:,@#()+=$*{}-]*$/;
 const HOSTNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/;
 const INTERFACE_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9/_.:-]*$/;
 const USERNAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
+const PROFILE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$/;
+const PROFILE_INDEX_KEY = "ciscoConfigGenerator.profiles.v1";
+const PROFILE_CURRENT_KEY = "ciscoConfigGenerator.currentProfile.v1";
+const PROFILE_DATA_PREFIX = "ciscoConfigGenerator.profile.v1.";
 const SANITIZE_RULES = {
   hostname: /[^A-Za-z0-9_.-]/g,
   interface: /[^A-Za-z0-9/_.:-]/g,
@@ -210,9 +214,16 @@ let selectedOutputFile = "";
 let activeTab = "device";
 let uploadedConfigs = {};
 let uploadWarnings = [];
+let activeProfileName = "";
 
 const elements = {
   statusText: document.querySelector("#statusText"),
+  profileNameInput: document.querySelector("#profileNameInput"),
+  profileLoginBtn: document.querySelector("#profileLoginBtn"),
+  profileSelect: document.querySelector("#profileSelect"),
+  profileSaveBtn: document.querySelector("#profileSaveBtn"),
+  profileDeleteBtn: document.querySelector("#profileDeleteBtn"),
+  profileStatus: document.querySelector("#profileStatus"),
   statDevices: document.querySelector("#statDevices"),
   statL2: document.querySelector("#statL2"),
   statL3: document.querySelector("#statL3"),
@@ -388,6 +399,7 @@ function render() {
   renderDeviceList();
   renderForms();
   renderOutput();
+  saveAndRefreshProfileControls();
 }
 
 function renderSummary() {
@@ -754,6 +766,16 @@ function renderOutput() {
   renderMessages(result.errors, [...result.warnings, ...uploadWarnings]);
 }
 
+function renderOutputAndSave() {
+  renderOutput();
+  saveAndRefreshProfileControls();
+}
+
+function saveAndRefreshProfileControls(options = {}) {
+  saveActiveProfile(options);
+  renderProfileControls();
+}
+
 function renderMessages(errors, warnings) {
   elements.messages.innerHTML = "";
   const items = [
@@ -771,6 +793,183 @@ function renderMessages(errors, warnings) {
     line.className = item.type;
     line.textContent = item.message;
     elements.messages.appendChild(line);
+  });
+}
+
+function renderProfileControls() {
+  const names = getProfileNames();
+  const selectedName = activeProfileName || elements.profileSelect.value || "";
+  elements.profileSelect.innerHTML = "";
+  const empty = document.createElement("option");
+  empty.value = "";
+  empty.textContent = names.length ? "選擇用戶" : "尚無暫存用戶";
+  elements.profileSelect.appendChild(empty);
+  names.forEach((name) => {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    elements.profileSelect.appendChild(option);
+  });
+  elements.profileSelect.value = names.includes(selectedName) ? selectedName : "";
+  if (document.activeElement !== elements.profileNameInput) elements.profileNameInput.value = activeProfileName || "";
+
+  if (!activeProfileName) {
+    elements.profileStatus.textContent = "未登入，用戶暫存尚未啟用";
+    elements.profileSaveBtn.disabled = true;
+    elements.profileDeleteBtn.disabled = !elements.profileSelect.value;
+    return;
+  }
+
+  const savedAt = loadProfileData(activeProfileName)?.savedAt;
+  elements.profileSaveBtn.disabled = false;
+  elements.profileDeleteBtn.disabled = false;
+  elements.profileStatus.textContent = savedAt
+    ? `${activeProfileName} 已登入，上次暫存 ${formatProfileTime(savedAt)}`
+    : `${activeProfileName} 已登入，尚未暫存`;
+}
+
+function sanitizeProfileName(value) {
+  return String(value || "").replace(/[^A-Za-z0-9_.-]+/g, "").replace(/^[._-]+/g, "").slice(0, 32);
+}
+
+function profileStorageKey(name) {
+  return `${PROFILE_DATA_PREFIX}${name}`;
+}
+
+function storageRead(key, fallback = null) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function storageWrite(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function storageRemove(key) {
+  try {
+    localStorage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getProfileNames() {
+  const names = storageRead(PROFILE_INDEX_KEY, []);
+  return Array.isArray(names) ? names.filter((name) => PROFILE_NAME_PATTERN.test(name)).sort() : [];
+}
+
+function setProfileNames(names) {
+  storageWrite(PROFILE_INDEX_KEY, [...new Set(names)].filter((name) => PROFILE_NAME_PATTERN.test(name)).sort());
+}
+
+function loadProfileData(name) {
+  if (!PROFILE_NAME_PATTERN.test(name)) return null;
+  const data = storageRead(profileStorageKey(name), null);
+  if (!data || typeof data !== "object") return null;
+  return data;
+}
+
+function saveActiveProfile(options = {}) {
+  if (!activeProfileName || !PROFILE_NAME_PATTERN.test(activeProfileName)) return false;
+  const payload = {
+    version: 1,
+    username: activeProfileName,
+    savedAt: new Date().toISOString(),
+    state: cleanForExport(state) || state,
+    uploadedConfigs,
+    selectedDeviceIndex,
+    selectedOutputFile,
+    activeTab,
+  };
+  if (!storageWrite(profileStorageKey(activeProfileName), payload)) {
+    if (options.announce) elements.statusText.textContent = "瀏覽器暫存失敗，請確認 localStorage 權限";
+    return false;
+  }
+  setProfileNames([...getProfileNames(), activeProfileName]);
+  storageWrite(PROFILE_CURRENT_KEY, activeProfileName);
+  if (options.announce) {
+    elements.statusText.textContent = `${activeProfileName} 已暫存目前設備與上傳檔`;
+    renderProfileControls();
+  }
+  return true;
+}
+
+function restoreLastProfile() {
+  const name = storageRead(PROFILE_CURRENT_KEY, "");
+  if (!name || !PROFILE_NAME_PATTERN.test(name)) return;
+  const data = loadProfileData(name);
+  if (!data) return;
+  applyProfileData(name, data);
+  uploadWarnings = [`${name}: 已載入上次暫存的設備與上傳檔`];
+}
+
+function applyProfileData(name, data) {
+  activeProfileName = name;
+  state = normalizeInventory(data.state || structuredClone(sampleInventory));
+  uploadedConfigs = data.uploadedConfigs && typeof data.uploadedConfigs === "object" ? data.uploadedConfigs : {};
+  selectedDeviceIndex = Number.isInteger(data.selectedDeviceIndex) ? data.selectedDeviceIndex : 0;
+  selectedOutputFile = data.selectedOutputFile || "";
+  activeTab = ["device", "advanced", "defaults"].includes(data.activeTab) ? data.activeTab : "device";
+}
+
+function loginProfile() {
+  const rawName = elements.profileNameInput.value || elements.profileSelect.value;
+  const name = sanitizeProfileName(rawName);
+  elements.profileNameInput.value = name;
+  if (!PROFILE_NAME_PATTERN.test(name)) {
+    elements.statusText.textContent = "用戶名請用英文、數字、底線、點或橫線，最多 32 字";
+    return;
+  }
+
+  const data = loadProfileData(name);
+  if (data) {
+    applyProfileData(name, data);
+    uploadWarnings = [`${name}: 已載入暫存設備與上傳檔`];
+    render();
+    elements.statusText.textContent = `${name} 已登入，暫存資料已載入`;
+    return;
+  }
+
+  activeProfileName = name;
+  saveActiveProfile();
+  render();
+  elements.statusText.textContent = `${name} 已建立，之後上傳 CFG/TXT 會暫存在此用戶`;
+}
+
+function deleteSelectedProfile() {
+  const name = elements.profileSelect.value || activeProfileName;
+  if (!name || !PROFILE_NAME_PATTERN.test(name)) {
+    elements.statusText.textContent = "請先選擇要刪除的暫存用戶";
+    return;
+  }
+  storageRemove(profileStorageKey(name));
+  setProfileNames(getProfileNames().filter((item) => item !== name));
+  if (activeProfileName === name) {
+    activeProfileName = "";
+    storageRemove(PROFILE_CURRENT_KEY);
+  }
+  renderProfileControls();
+  elements.statusText.textContent = `已刪除 ${name} 的暫存資料，目前畫面不受影響`;
+}
+
+function formatProfileTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "未知時間";
+  return date.toLocaleString("zh-TW", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
@@ -939,7 +1138,7 @@ function updateDeviceFromForm(event) {
     if (target.name === "hostname") selectedOutputFile = "";
     renderDeviceList();
     if (target.name === "device_layer") renderForms();
-    renderOutput();
+    renderOutputAndSave();
   }
 }
 
@@ -963,7 +1162,7 @@ function updateDefaultsFromForm(event) {
     if (target.name === "local_user_secret_type") user.secret_type = target.value.trim();
     if (target.name === "local_user_secret") user.secret = target.value;
   }
-  renderOutput();
+  renderOutputAndSave();
 }
 
 function updateAdvancedFromEvent(event) {
@@ -986,7 +1185,7 @@ function updateAdvancedFromEvent(event) {
     delete device.spanning_tree;
   }
   renderDeviceList();
-  renderOutput();
+  renderOutputAndSave();
 }
 
 function updateRowFromEvent(event) {
@@ -1119,7 +1318,7 @@ function updateRowFromEvent(event) {
       item[key] = value.trim();
     }
   }
-  renderOutput();
+  renderOutputAndSave();
 }
 
 function removeRow(kind, index, meta = {}) {
@@ -2703,6 +2902,7 @@ async function handleConfigFiles(fileList) {
       elements.statusText.textContent += `，已更新 ${importedDevices.length} 台設備`;
       flashElement(elements.editorPanel);
     }
+    elements.statusText.textContent += activeProfileName ? `，已暫存到 ${activeProfileName}` : "，登入用戶後可暫存";
   } else {
     elements.statusText.textContent = "沒有可上傳的 CFG/TXT 檔案";
   }
@@ -2752,6 +2952,7 @@ function flashElement(element) {
 function focusDeviceEditor() {
   activeTab = "device";
   renderForms();
+  saveAndRefreshProfileControls();
   elements.editorPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
   elements.deviceForm.elements.hostname?.focus();
   elements.statusText.textContent = "已切到設備編輯";
@@ -2801,6 +3002,27 @@ elements.fileInput.addEventListener("change", async () => {
     elements.fileInput.value = "";
   }
 });
+
+elements.profileNameInput.addEventListener("input", () => {
+  const cleaned = sanitizeProfileName(elements.profileNameInput.value);
+  if (cleaned !== elements.profileNameInput.value) {
+    elements.profileNameInput.value = cleaned;
+    elements.statusText.textContent = "用戶名已移除中文或非安全字元";
+  }
+});
+elements.profileNameInput.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  loginProfile();
+});
+elements.profileLoginBtn.addEventListener("click", loginProfile);
+elements.profileSelect.addEventListener("change", () => {
+  elements.profileNameInput.value = elements.profileSelect.value;
+  if (elements.profileSelect.value) loginProfile();
+  else renderProfileControls();
+});
+elements.profileSaveBtn.addEventListener("click", () => saveActiveProfile({ announce: true }));
+elements.profileDeleteBtn.addEventListener("click", deleteSelectedProfile);
 
 elements.uploadConfigBtn.addEventListener("click", () => {
   elements.statusText.textContent = "請選擇 .cfg 或 .txt 檔案";
@@ -2863,16 +3085,19 @@ elements.deleteDeviceBtn.addEventListener("click", () => {
 elements.deviceTab.addEventListener("click", () => {
   activeTab = "device";
   renderForms();
+  saveAndRefreshProfileControls();
 });
 
 elements.defaultsTab.addEventListener("click", () => {
   activeTab = "defaults";
   renderForms();
+  saveAndRefreshProfileControls();
 });
 
 elements.advancedTab.addEventListener("click", () => {
   activeTab = "advanced";
   renderForms();
+  saveAndRefreshProfileControls();
 });
 
 elements.deviceForm.addEventListener("input", updateDeviceFromForm);
@@ -2937,25 +3162,25 @@ elements.ospfEnabled.addEventListener("change", () => {
 
 elements.ospfProcessId.addEventListener("input", () => {
   currentDevice().routing.ospf.process_id = toNumber(elements.ospfProcessId.value, 1);
-  renderOutput();
+  renderOutputAndSave();
 });
 
 elements.ospfRouterId.addEventListener("input", () => {
   sanitizeTargetInput(elements.ospfRouterId);
   currentDevice().routing.ospf.router_id = elements.ospfRouterId.value.trim();
-  renderOutput();
+  renderOutputAndSave();
 });
 
 elements.ospfRedistributeSources.addEventListener("input", () => {
   sanitizeTargetInput(elements.ospfRedistributeSources);
   setRedistribute(currentDevice().routing.ospf, elements.ospfRedistributeSources.value, elements.ospfRedistributeRouteMap.value, "", true);
-  renderOutput();
+  renderOutputAndSave();
 });
 
 elements.ospfRedistributeRouteMap.addEventListener("input", () => {
   sanitizeTargetInput(elements.ospfRedistributeRouteMap);
   setRedistribute(currentDevice().routing.ospf, elements.ospfRedistributeSources.value, elements.ospfRedistributeRouteMap.value, "", true);
-  renderOutput();
+  renderOutputAndSave();
 });
 
 elements.addOspfNetworkBtn.addEventListener("click", () => {
@@ -2979,42 +3204,42 @@ elements.eigrpEnabled.addEventListener("change", () => {
 
 elements.eigrpAsn.addEventListener("input", () => {
   currentDevice().routing.eigrp.asn = toNumber(elements.eigrpAsn.value, 100);
-  renderOutput();
+  renderOutputAndSave();
 });
 
 elements.eigrpRouterId.addEventListener("input", () => {
   sanitizeTargetInput(elements.eigrpRouterId);
   currentDevice().routing.eigrp.router_id = elements.eigrpRouterId.value.trim();
-  renderOutput();
+  renderOutputAndSave();
 });
 
 elements.eigrpPassiveInterfaces.addEventListener("input", () => {
   sanitizeTargetInput(elements.eigrpPassiveInterfaces);
   currentDevice().routing.eigrp.passive_interfaces = splitList(elements.eigrpPassiveInterfaces.value);
-  renderOutput();
+  renderOutputAndSave();
 });
 
 elements.eigrpNoAutoSummary.addEventListener("change", () => {
   currentDevice().routing.eigrp.no_auto_summary = elements.eigrpNoAutoSummary.checked;
-  renderOutput();
+  renderOutputAndSave();
 });
 
 elements.eigrpRedistributeSources.addEventListener("input", () => {
   sanitizeTargetInput(elements.eigrpRedistributeSources);
   setRedistribute(currentDevice().routing.eigrp, elements.eigrpRedistributeSources.value, elements.eigrpRedistributeRouteMap.value, elements.eigrpRedistributeMetric.value);
-  renderOutput();
+  renderOutputAndSave();
 });
 
 elements.eigrpRedistributeMetric.addEventListener("input", () => {
   sanitizeTargetInput(elements.eigrpRedistributeMetric);
   setRedistribute(currentDevice().routing.eigrp, elements.eigrpRedistributeSources.value, elements.eigrpRedistributeRouteMap.value, elements.eigrpRedistributeMetric.value);
-  renderOutput();
+  renderOutputAndSave();
 });
 
 elements.eigrpRedistributeRouteMap.addEventListener("input", () => {
   sanitizeTargetInput(elements.eigrpRedistributeRouteMap);
   setRedistribute(currentDevice().routing.eigrp, elements.eigrpRedistributeSources.value, elements.eigrpRedistributeRouteMap.value, elements.eigrpRedistributeMetric.value);
-  renderOutput();
+  renderOutputAndSave();
 });
 
 elements.addEigrpNetworkBtn.addEventListener("click", () => {
@@ -3038,25 +3263,25 @@ elements.bgpEnabled.addEventListener("change", () => {
 
 elements.bgpAsn.addEventListener("input", () => {
   currentDevice().routing.bgp.asn = toNumber(elements.bgpAsn.value, 65001);
-  renderOutput();
+  renderOutputAndSave();
 });
 
 elements.bgpRouterId.addEventListener("input", () => {
   sanitizeTargetInput(elements.bgpRouterId);
   currentDevice().routing.bgp.router_id = elements.bgpRouterId.value.trim();
-  renderOutput();
+  renderOutputAndSave();
 });
 
 elements.bgpRedistributeSources.addEventListener("input", () => {
   sanitizeTargetInput(elements.bgpRedistributeSources);
   setRedistribute(currentDevice().routing.bgp, elements.bgpRedistributeSources.value, elements.bgpRedistributeRouteMap.value);
-  renderOutput();
+  renderOutputAndSave();
 });
 
 elements.bgpRedistributeRouteMap.addEventListener("input", () => {
   sanitizeTargetInput(elements.bgpRedistributeRouteMap);
   setRedistribute(currentDevice().routing.bgp, elements.bgpRedistributeSources.value, elements.bgpRedistributeRouteMap.value);
-  renderOutput();
+  renderOutputAndSave();
 });
 
 elements.addBgpNeighborBtn.addEventListener("click", () => {
@@ -3146,7 +3371,7 @@ elements.addNatRuleBtn.addEventListener("click", () => {
 
 elements.outputSelect.addEventListener("change", () => {
   selectedOutputFile = elements.outputSelect.value;
-  renderOutput();
+  renderOutputAndSave();
 });
 
 elements.copyConfigBtn.addEventListener("click", async () => {
@@ -3167,8 +3392,9 @@ elements.clearUploadedBtn.addEventListener("click", () => {
   uploadedConfigs = {};
   uploadWarnings = [];
   selectedOutputFile = "";
-  renderOutput();
+  renderOutputAndSave();
   elements.statusText.textContent = `已清除 ${count} 份上傳檔案`;
 });
 
+restoreLastProfile();
 render();

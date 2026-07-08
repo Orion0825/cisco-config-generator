@@ -192,6 +192,49 @@ textarea {
   justify-content: flex-end;
 }
 
+.profile-session {
+  display: grid;
+  grid-template-columns: minmax(150px, 190px) auto minmax(140px, 180px) auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid #cfdde4;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.profile-name-field {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.profile-name-field input,
+.profile-session select {
+  min-height: 32px;
+  font-size: 13px;
+}
+
+.profile-session button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.profile-session small {
+  grid-column: 1 / -1;
+  min-height: 15px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
 .quick-stats {
   display: flex;
   gap: 6px;
@@ -937,6 +980,17 @@ label select {
   .topbar-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .profile-session {
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .profile-name-field,
+  .profile-session select,
+  .profile-session small {
+    grid-column: 1 / -1;
   }
 
   .quick-stats {

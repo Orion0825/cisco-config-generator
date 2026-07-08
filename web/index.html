@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cisco Config Generator</title>
-    <link rel="stylesheet" href="styles.css?v=20260708-atm-adsl-plan">
+    <link rel="stylesheet" href="styles.css?v=20260708-atm-unit-id">
   </head>
   <body>
     <div class="app-shell mode-general">
@@ -84,14 +84,14 @@
             <div class="section-heading">
               <div>
                 <h2>ATM路由</h2>
-                <small>只開放 hostname、ADSL IP網段、static route、WAN interface、static NAT</small>
+                <small>只開放機號、ADSL IP網段、static route、WAN interface、static NAT</small>
               </div>
               <div id="atmModelButtons" class="segmented-controls" role="tablist" aria-label="ATM 型號"></div>
             </div>
             <div class="field-grid atm-basic-grid">
               <label>
-                Hostname
-                <input id="atmHostname" autocomplete="off">
+                機號
+                <input id="atmHostname" autocomplete="off" placeholder="07831">
               </label>
               <label>
                 型號
@@ -479,7 +479,7 @@
       </main>
     </div>
 
-    <script src="atm-templates.js?v=20260708-atm-adsl-plan"></script>
-    <script src="app.js?v=20260708-atm-adsl-plan"></script>
+    <script src="atm-templates.js?v=20260708-atm-unit-id"></script>
+    <script src="app.js?v=20260708-atm-unit-id"></script>
   </body>
 </html>

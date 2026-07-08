@@ -204,6 +204,7 @@ const PROFILE_DATA_PREFIX = "ciscoConfigGenerator.profile.v1.";
 const ATM_ROUTE_TEMPLATES = window.ATM_ROUTE_TEMPLATES || {};
 const ATM_MODELS = Object.keys(ATM_ROUTE_TEMPLATES);
 const ATM_ADSL_MASK = "255.255.255.240";
+const ATM_HOSTNAME_PREFIX = "ATM_";
 const SANITIZE_RULES = {
   hostname: /[^A-Za-z0-9_.-]/g,
   interface: /[^A-Za-z0-9/_.:-]/g,
@@ -906,6 +907,17 @@ function syncAtmDerivedInputs() {
   syncRows(elements.atmNatRows, atmState.natRules || [], "outsideIp");
 }
 
+function atmUnitIdFromHostname(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^ATM[_-]?/i, "")
+    .replace(SANITIZE_RULES.hostname, "");
+}
+
+function atmHostnameFromUnitId(value) {
+  return `${ATM_HOSTNAME_PREFIX}${atmUnitIdFromHostname(value)}`;
+}
+
 function createAtmState(model, saved = {}) {
   const selectedModel = ATM_ROUTE_TEMPLATES[model] ? model : ATM_MODELS[0] || "881";
   const parsed = parseAtmTemplate(selectedModel);
@@ -933,7 +945,7 @@ function createAtmState(model, saved = {}) {
   };
   return {
     model: selectedModel,
-    hostname: saved.hostname || parsed.hostname,
+    hostname: atmHostnameFromUnitId(saved.hostname || parsed.hostname),
     adsl,
     interfaces,
     natRules,
@@ -1029,6 +1041,9 @@ function renderAtmConfig() {
   const natValues = new Map((atmState.natRules || []).map((item) => [item.insideIp, item]));
   const routeValues = new Map((atmState.staticRoutes || []).map((item) => [`${item.destination} ${item.mask}`, item]));
 
+  const unitId = atmUnitIdFromHostname(atmState.hostname);
+  if (!unitId) errors.push("ATM路由: 機號不可空白");
+  atmState.hostname = atmHostnameFromUnitId(unitId);
   if (!HOSTNAME_PATTERN.test(atmState.hostname || "")) errors.push("ATM路由: hostname 含中文或非 Cisco CLI 安全字元");
   if (atmState.adsl?.address && !isIpv4Address(atmState.adsl.address)) errors.push("ATM路由 ADSL IP網段不是有效 IPv4");
   if (parsed.hostnameLine !== undefined) lines[parsed.hostnameLine] = `hostname ${atmState.hostname}`;
@@ -1089,7 +1104,7 @@ function renderAtmForm() {
   });
 
   const parsed = parseAtmTemplate(atmState.model);
-  elements.atmHostname.value = atmState.hostname || "";
+  elements.atmHostname.value = atmUnitIdFromHostname(atmState.hostname || "");
   elements.atmModelLabel.value = parsed.label;
   atmState.adsl ||= {
     interfaceName: "N/A",
@@ -1170,12 +1185,12 @@ function updateAtmFromEvent(event) {
 }
 
 function updateAtmHostname() {
-  const cleaned = elements.atmHostname.value.replace(SANITIZE_RULES.hostname, "");
+  const cleaned = atmUnitIdFromHostname(elements.atmHostname.value);
   if (cleaned !== elements.atmHostname.value) {
     elements.atmHostname.value = cleaned;
-    elements.statusText.textContent = "ATM hostname 已移除中文或非 Cisco CLI 安全字元";
+    elements.statusText.textContent = "ATM 機號已移除 ATM_ 前綴、中文或非 Cisco CLI 安全字元";
   }
-  atmState.hostname = cleaned;
+  atmState.hostname = atmHostnameFromUnitId(cleaned);
   selectedOutputFile = atmOutputFilename();
   renderOutputAndSave();
 }
@@ -1183,7 +1198,7 @@ function updateAtmHostname() {
 function switchAtmModel(model) {
   if (!ATM_ROUTE_TEMPLATES[model]) return;
   const savedAdsl = atmState.adsl ? structuredClone(atmState.adsl) : undefined;
-  atmState = createAtmState(model, savedAdsl ? { adsl: savedAdsl } : {});
+  atmState = createAtmState(model, { hostname: atmState.hostname, ...(savedAdsl ? { adsl: savedAdsl } : {}) });
   syncAtmFromAdslAddress();
   selectedOutputFile = atmOutputFilename();
   renderAtmForm();

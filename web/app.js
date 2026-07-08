@@ -218,8 +218,11 @@ let uploadedConfigs = {};
 let uploadWarnings = [];
 let activeProfileName = "";
 let atmState = createAtmState(ATM_MODELS[0] || "881");
+let workspaceMode = "general";
+let pendingConfigUploadMode = "general";
 
 const elements = {
+  appShell: document.querySelector(".app-shell"),
   statusText: document.querySelector("#statusText"),
   profileNameInput: document.querySelector("#profileNameInput"),
   profileLoginBtn: document.querySelector("#profileLoginBtn"),
@@ -238,6 +241,7 @@ const elements = {
   configFileInput: document.querySelector("#configFileInput"),
   importBtn: document.querySelector("#importBtn"),
   uploadConfigBtn: document.querySelector("#uploadConfigBtn"),
+  modeToggleBtn: document.querySelector("#modeToggleBtn"),
   exportBtn: document.querySelector("#exportBtn"),
   addDeviceBtn: document.querySelector("#addDeviceBtn"),
   duplicateDeviceBtn: document.querySelector("#duplicateDeviceBtn"),
@@ -404,11 +408,25 @@ function render() {
   }
   selectedDeviceIndex = Math.min(selectedDeviceIndex, state.devices.length - 1);
   renderSummary();
+  renderWorkspaceMode();
   renderDeviceList();
   renderAtmForm();
   renderForms();
   renderOutput();
   saveAndRefreshProfileControls();
+}
+
+function setWorkspaceMode(mode) {
+  workspaceMode = mode === "atm" ? "atm" : "general";
+}
+
+function renderWorkspaceMode() {
+  const isAtmMode = workspaceMode === "atm";
+  elements.appShell.classList.toggle("mode-atm", isAtmMode);
+  elements.appShell.classList.toggle("mode-general", !isAtmMode);
+  elements.modeToggleBtn.textContent = isAtmMode ? "切回一般模式" : "切到 ATM 模式";
+  elements.modeToggleBtn.setAttribute("aria-pressed", String(isAtmMode));
+  elements.modeToggleBtn.title = isAtmMode ? "顯示一般 L2/L3 設備產生器" : "只顯示 ATM 路由設定區";
 }
 
 function renderSummary() {
@@ -807,6 +825,66 @@ function createAtmState(model, saved = {}) {
   };
 }
 
+function readAtmValuesFromConfig(content, fallbackName = "") {
+  const lines = normalizeConfigText(content).split("\n");
+  const values = { hostname: "", interfaces: [], natRules: [] };
+  const interfaceAddresses = new Map();
+  const natRules = new Map();
+  let currentInterface = "";
+
+  lines.forEach((rawLine) => {
+    const line = rawLine.trim();
+    let match = line.match(/^hostname\s+(\S+)/i);
+    if (match) {
+      values.hostname = safeFilename(match[1]);
+      return;
+    }
+
+    match = line.match(/^interface\s+(.+)/i);
+    if (match) {
+      currentInterface = match[1].trim();
+      return;
+    }
+
+    match = line.match(/^ip address\s+(\S+)\s+(\S+)/i);
+    if (match && currentInterface) {
+      interfaceAddresses.set(currentInterface, { name: currentInterface, address: match[1], mask: match[2] });
+      return;
+    }
+
+    match = line.match(/^ip nat inside source static\s+(\S+)\s+(\S+)/i);
+    if (match) {
+      natRules.set(match[1], { insideIp: match[1], outsideIp: match[2] });
+    }
+  });
+
+  const scored = ATM_MODELS.map((model) => {
+    const parsed = parseAtmTemplate(model);
+    let score = fallbackName.includes(model) ? 2 : 0;
+    parsed.interfaces.forEach((item) => {
+      if (interfaceAddresses.has(item.name)) score += 2;
+    });
+    parsed.natRules.forEach((item) => {
+      if (natRules.has(item.insideIp)) score += 1;
+    });
+    return { model, score };
+  }).sort((a, b) => b.score - a.score);
+
+  values.model = scored[0]?.model || ATM_MODELS[0] || "881";
+  const parsed = parseAtmTemplate(values.model);
+  values.hostname ||= parsed.hostname;
+  values.interfaces = parsed.interfaces.map((item) => interfaceAddresses.get(item.name) || {
+    name: item.name,
+    address: item.address,
+    mask: item.mask,
+  });
+  values.natRules = parsed.natRules.map((item) => natRules.get(item.insideIp) || {
+    insideIp: item.insideIp,
+    outsideIp: item.outsideIp,
+  });
+  return values;
+}
+
 function atmOutputFilename() {
   const hostname = safeFilename(atmState.hostname || `ATM_${atmState.model}`);
   return `${hostname}-${safeFilename(atmState.model)}.cfg`;
@@ -931,13 +1009,56 @@ function switchAtmModel(model) {
   elements.statusText.textContent = `ATM路由已切換到 ${model} 範本`;
 }
 
+function askWorkspaceMode(actionText) {
+  const isAtm = window.confirm(`${actionText} 是否為 ATM 路由？\n\n確定：ATM路由\n取消：一般設備`);
+  setWorkspaceMode(isAtm ? "atm" : "general");
+  return workspaceMode;
+}
+
+function beginConfigUpload() {
+  pendingConfigUploadMode = askWorkspaceMode("上傳設定檔");
+  render();
+  elements.configFileInput.click();
+}
+
+function createFromModeSelection() {
+  const mode = askWorkspaceMode("新增設定");
+  if (mode === "atm") {
+    atmState = createAtmState(atmState.model || ATM_MODELS[0] || "881");
+    selectedOutputFile = atmOutputFilename();
+    render();
+    elements.statusText.textContent = "已新增 ATM 路由，其他設定區已隱藏";
+    flashElement(elements.editorPanel);
+    return;
+  }
+
+  state.devices.push(newDevice());
+  selectedDeviceIndex = state.devices.length - 1;
+  selectedOutputFile = "";
+  render();
+  elements.statusText.textContent = "已新增一般設備，ATM路由區已隱藏";
+}
+
+function toggleWorkspaceMode() {
+  const nextMode = workspaceMode === "atm" ? "general" : "atm";
+  setWorkspaceMode(nextMode);
+  selectedOutputFile = nextMode === "atm" ? atmOutputFilename() : "";
+  render();
+  elements.statusText.textContent = nextMode === "atm"
+    ? "已切換到 ATM 模式，只顯示 ATM 設定區"
+    : "已切回一般模式，ATM 路由功能已隱藏";
+  flashElement(nextMode === "atm" ? elements.editorPanel : elements.deviceList);
+}
+
 function renderOutput() {
   const result = renderInventory(state);
-  const generatedFiles = Object.keys(result.configs);
+  const generatedFiles = workspaceMode === "atm" ? [] : Object.keys(result.configs);
   const atmConfig = renderAtmConfig();
-  const atmFiles = atmConfig.content ? [atmConfig.filename] : [];
-  const uploadedFiles = Object.keys(uploadedConfigs);
-  const configs = { ...result.configs, [atmConfig.filename]: atmConfig.content, ...uploadedConfigs };
+  const atmFiles = workspaceMode === "atm" && atmConfig.content ? [atmConfig.filename] : [];
+  const uploadedFiles = workspaceMode === "atm" ? [] : Object.keys(uploadedConfigs);
+  const configs = workspaceMode === "atm"
+    ? { [atmConfig.filename]: atmConfig.content }
+    : { ...result.configs, ...uploadedConfigs };
   const files = [...generatedFiles, ...atmFiles, ...uploadedFiles];
   selectedOutputFile = selectedOutputFile && configs[selectedOutputFile] ? selectedOutputFile : files[0] || "";
   elements.outputSelect.innerHTML = "";
@@ -973,14 +1094,18 @@ function renderOutput() {
   elements.outputSelect.value = selectedOutputFile;
   elements.configOutput.value = configs[selectedOutputFile] || "";
   elements.outputCount.textContent = String(files.length);
-  if (result.errors.length || atmConfig.errors.length) {
+  const visibleErrors = workspaceMode === "atm" ? atmConfig.errors : result.errors;
+  const visibleWarnings = workspaceMode === "atm" ? [] : [...result.warnings, ...uploadWarnings];
+  if (visibleErrors.length) {
     elements.statusText.textContent = "設定檔需要修正";
+  } else if (workspaceMode === "atm") {
+    elements.statusText.textContent = `ATM路由 ${atmState.model} 範本已產生`;
   } else if (uploadedFiles.length) {
-    elements.statusText.textContent = `已產生 ${generatedFiles.length} 份，另有 1 份 ATM路由、上傳 ${uploadedFiles.length} 份 CFG/TXT`;
+    elements.statusText.textContent = `已產生 ${generatedFiles.length} 份，另上傳 ${uploadedFiles.length} 份 CFG/TXT`;
   } else {
-    elements.statusText.textContent = `已產生 ${generatedFiles.length} 份設定檔，另有 1 份 ATM路由`;
+    elements.statusText.textContent = `已產生 ${generatedFiles.length} 份設定檔`;
   }
-  renderMessages([...result.errors, ...atmConfig.errors], [...result.warnings, ...uploadWarnings]);
+  renderMessages(visibleErrors, visibleWarnings);
 }
 
 function renderOutputAndSave() {
@@ -1105,6 +1230,7 @@ function saveActiveProfile(options = {}) {
     state: cleanForExport(state) || state,
     uploadedConfigs,
     atmState,
+    workspaceMode,
     selectedDeviceIndex,
     selectedOutputFile,
     activeTab,
@@ -1136,6 +1262,7 @@ function applyProfileData(name, data) {
   state = normalizeInventory(data.state || structuredClone(sampleInventory));
   uploadedConfigs = data.uploadedConfigs && typeof data.uploadedConfigs === "object" ? data.uploadedConfigs : {};
   atmState = createAtmState(data.atmState?.model || ATM_MODELS[0] || "881", data.atmState || {});
+  setWorkspaceMode(data.workspaceMode || "general");
   selectedDeviceIndex = Number.isInteger(data.selectedDeviceIndex) ? data.selectedDeviceIndex : 0;
   selectedOutputFile = data.selectedOutputFile || "";
   activeTab = ["device", "advanced", "defaults"].includes(data.activeTab) ? data.activeTab : "device";
@@ -3128,6 +3255,39 @@ async function handleConfigFiles(fileList) {
   flashElement(elements.outputPanel);
 }
 
+async function handleAtmConfigFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) {
+    elements.statusText.textContent = "沒有選到 ATM CFG/TXT 檔案";
+    return;
+  }
+
+  const file = files.find((item) => hasSupportedConfigExtension(safeUploadFilename(item.name)));
+  if (!file) {
+    elements.statusText.textContent = "ATM路由只支援 .cfg 或 .txt";
+    return;
+  }
+
+  try {
+    const content = normalizeConfigText(await file.text());
+    if (!content.trim()) {
+      elements.statusText.textContent = "ATM 設定檔是空的";
+      return;
+    }
+    const imported = readAtmValuesFromConfig(content, safeUploadFilename(file.name));
+    atmState = createAtmState(imported.model, imported);
+    setWorkspaceMode("atm");
+    selectedOutputFile = atmOutputFilename();
+    uploadWarnings = [`${safeUploadFilename(file.name)}: 已載入 ATM 路由可編輯欄位，其餘套用內建範本`];
+    render();
+    elements.statusText.textContent = `已載入 ATM ${atmState.model} 設定檔，只顯示 ATM 設定區`;
+    flashElement(elements.editorPanel);
+    flashElement(elements.outputPanel);
+  } catch (error) {
+    elements.statusText.textContent = `ATM 設定檔處理失敗: ${error.message}`;
+  }
+}
+
 function download(filename, content, type = "text/plain") {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
@@ -3212,6 +3372,7 @@ elements.fileInput.addEventListener("change", async () => {
   if (!file) return;
   try {
     state = normalizeInventory(JSON.parse(await file.text()));
+    setWorkspaceMode("general");
     selectedDeviceIndex = 0;
     selectedOutputFile = "";
     render();
@@ -3252,17 +3413,23 @@ elements.atmHostname.addEventListener("input", updateAtmHostname);
 elements.atmInterfaceRows.addEventListener("input", updateAtmFromEvent);
 elements.atmNatRows.addEventListener("input", updateAtmFromEvent);
 
-elements.uploadConfigBtn.addEventListener("click", () => {
-  elements.statusText.textContent = "請選擇 .cfg 或 .txt 檔案";
-});
+elements.uploadConfigBtn.addEventListener("click", beginConfigUpload);
 elements.uploadConfigBtn.addEventListener("keydown", (event) => {
   if (!["Enter", " "].includes(event.key)) return;
   event.preventDefault();
-  elements.configFileInput.click();
+  beginConfigUpload();
 });
 elements.configFileInput.addEventListener("change", async () => {
-  await handleConfigFiles(elements.configFileInput.files);
+  if (pendingConfigUploadMode === "atm") await handleAtmConfigFiles(elements.configFileInput.files);
+  else await handleConfigFiles(elements.configFileInput.files);
   elements.configFileInput.value = "";
+});
+
+elements.configDropZone.addEventListener("click", beginConfigUpload);
+elements.configDropZone.addEventListener("keydown", (event) => {
+  if (!["Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  beginConfigUpload();
 });
 
 elements.configDropZone.addEventListener("dragover", (event) => {
@@ -3278,20 +3445,19 @@ elements.configDropZone.addEventListener("dragleave", () => {
 elements.configDropZone.addEventListener("drop", async (event) => {
   event.preventDefault();
   elements.configDropZone.classList.remove("drag-active");
-  await handleConfigFiles(event.dataTransfer?.files);
+  const mode = askWorkspaceMode("拖放設定檔");
+  if (mode === "atm") await handleAtmConfigFiles(event.dataTransfer?.files);
+  else await handleConfigFiles(event.dataTransfer?.files);
 });
+
+elements.modeToggleBtn.addEventListener("click", toggleWorkspaceMode);
 
 elements.exportBtn.addEventListener("click", () => {
   const exported = cleanForExport(state) || { devices: [] };
   download("devices.json", `${JSON.stringify(exported, null, 2)}\n`, "application/json");
 });
 
-elements.addDeviceBtn.addEventListener("click", () => {
-  state.devices.push(newDevice());
-  selectedDeviceIndex = state.devices.length - 1;
-  selectedOutputFile = "";
-  render();
-});
+elements.addDeviceBtn.addEventListener("click", createFromModeSelection);
 
 elements.duplicateDeviceBtn.addEventListener("click", () => {
   const clone = structuredClone(currentDevice());

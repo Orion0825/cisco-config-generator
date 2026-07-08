@@ -305,6 +305,28 @@ textarea {
   border-color: var(--blue);
 }
 
+#modeToggleBtn {
+  background: #fff8eb;
+  border-color: #e7c98a;
+  color: #8a4a08;
+}
+
+#modeToggleBtn:hover {
+  background: #ffefd0;
+  border-color: #c45a1b;
+}
+
+#modeToggleBtn[aria-pressed="true"] {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #fff;
+}
+
+#modeToggleBtn[aria-pressed="true"]:hover {
+  background: #0b5e58;
+  border-color: #0b5e58;
+}
+
 .intro-strip {
   display: flex;
   align-items: center;
@@ -394,6 +416,36 @@ textarea {
   grid-template-columns: minmax(220px, 260px) minmax(430px, 1fr) minmax(360px, 44vw);
   gap: 14px;
   padding: 14px;
+}
+
+.app-shell.mode-general .atm-router-block {
+  display: none;
+}
+
+.app-shell.mode-general .editor-panel {
+  grid-template-rows: auto 1fr;
+}
+
+.app-shell.mode-atm .workspace {
+  grid-template-columns: minmax(420px, 0.95fr) minmax(360px, 1fr);
+}
+
+.app-shell.mode-atm .device-panel,
+.app-shell.mode-atm .intro-strip,
+.app-shell.mode-atm .tabs,
+.app-shell.mode-atm .form-stack,
+.app-shell.mode-atm .quick-stats {
+  display: none;
+}
+
+.app-shell.mode-atm .editor-panel {
+  grid-template-rows: 1fr;
+}
+
+.app-shell.mode-atm .atm-router-block {
+  min-height: 0;
+  margin: 12px;
+  overflow: auto;
 }
 
 .device-panel,

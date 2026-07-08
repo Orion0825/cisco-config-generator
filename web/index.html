@@ -4,10 +4,10 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cisco Config Generator</title>
-    <link rel="stylesheet" href="styles.css?v=20260708-atm-route">
+    <link rel="stylesheet" href="styles.css?v=20260708-mode-toggle">
   </head>
   <body>
-    <div class="app-shell">
+    <div class="app-shell mode-general">
       <header class="topbar">
         <div class="brand-block">
           <div class="brand-mark" aria-hidden="true">
@@ -40,7 +40,8 @@
             <input id="fileInput" type="file" accept="application/json,.json" hidden>
             <input id="configFileInput" class="file-input-native" type="file" accept=".cfg,.txt,text/plain" multiple>
             <button id="importBtn" type="button">匯入 JSON</button>
-            <label id="uploadConfigBtn" class="toolbar-button upload-config-label" for="configFileInput" role="button" tabindex="0">上傳 CFG/TXT</label>
+            <button id="uploadConfigBtn" type="button">上傳 CFG/TXT</button>
+            <button id="modeToggleBtn" type="button" aria-pressed="false">切到 ATM 模式</button>
             <button id="exportBtn" type="button">匯出 JSON</button>
             <button id="addDeviceBtn" type="button">新增設備</button>
           </div>
@@ -447,10 +448,10 @@
             <span>Cisco CLI 可複製貼上區</span>
             <small>產生後可直接貼到 Console / SSH</small>
           </div>
-          <label id="configDropZone" class="upload-drop-zone" for="configFileInput">
+          <div id="configDropZone" class="upload-drop-zone" role="button" tabindex="0">
             <strong>上傳或拖放 CFG/TXT</strong>
             <small>支援 .cfg / .txt，會同步左側設備與右側輸出</small>
-          </label>
+          </div>
           <textarea id="configOutput" spellcheck="false" readonly aria-label="Cisco CLI 可複製貼上設定"></textarea>
           <div class="output-actions">
             <button id="copyConfigBtn" type="button">複製到剪貼簿</button>
@@ -462,7 +463,7 @@
       </main>
     </div>
 
-    <script src="atm-templates.js?v=20260708-atm-route"></script>
-    <script src="app.js?v=20260708-atm-route"></script>
+    <script src="atm-templates.js?v=20260708-mode-toggle"></script>
+    <script src="app.js?v=20260708-mode-toggle"></script>
   </body>
 </html>

@@ -244,6 +244,8 @@ web/index.html
 
 GUI 上方也有「用戶」暫存工作區。輸入英文/數字用戶名後登入，設備資料、目前上傳的 CFG/TXT、選到的輸出檔與目前分頁會暫存在瀏覽器或桌面 App 的 localStorage；下次用同一個用戶名開啟會自動載入。這是本機暫存功能，不是雲端帳號，換電腦或清除瀏覽器資料後不會保留。
 
+GUI 也提供「ATM路由」區塊，內建 881、921、8130 三種型號範本。此區只開放修改 `hostname`、範本中已有 `ip address` 的 interface IP，以及 `ip nat inside source static` 每行最後一個 IP；description、ACL、SSH、NTP、static route 與其他設定會完全沿用範例。產出的 ATM config 會出現在右側輸出選單的「ATM路由」群組。
+
 GUI 是純前端靜態檔案，不需要 npm、Flask 或其他後端服務。若要和 CLI 流程接軌，建議在 GUI 匯出 JSON 後覆蓋 `inventory/devices.json`，再執行：
 
 ```bash

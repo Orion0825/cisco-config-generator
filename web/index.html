@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cisco Config Generator</title>
-    <link rel="stylesheet" href="styles.css?v=20260708-user-store">
+    <link rel="stylesheet" href="styles.css?v=20260708-atm-route">
   </head>
   <body>
     <div class="app-shell">
@@ -78,6 +78,36 @@
             <button id="advancedTab" type="button" class="tab">進階</button>
             <button id="defaultsTab" type="button" class="tab">預設值</button>
           </div>
+
+          <section class="section-block atm-router-block" aria-label="ATM 路由產生器">
+            <div class="section-heading">
+              <div>
+                <h2>ATM路由</h2>
+                <small>只開放 hostname、interface IP、static NAT 最後 IP</small>
+              </div>
+              <div id="atmModelButtons" class="segmented-controls" role="tablist" aria-label="ATM 型號"></div>
+            </div>
+            <div class="field-grid atm-basic-grid">
+              <label>
+                Hostname
+                <input id="atmHostname" autocomplete="off">
+              </label>
+              <label>
+                型號
+                <input id="atmModelLabel" readonly>
+              </label>
+            </div>
+            <div class="section-heading compact">
+              <h3>Interface IP</h3>
+              <small>Description 保留範本原值</small>
+            </div>
+            <div id="atmInterfaceRows" class="rows atm-rows"></div>
+            <div class="section-heading compact">
+              <h3>Static NAT</h3>
+              <small>只修改 ip nat inside source static 最後面的 IP</small>
+            </div>
+            <div id="atmNatRows" class="rows atm-rows"></div>
+          </section>
 
           <form id="deviceForm" class="form-stack">
             <section class="section-block">
@@ -432,6 +462,7 @@
       </main>
     </div>
 
-    <script src="app.js?v=20260708-user-store"></script>
+    <script src="atm-templates.js?v=20260708-atm-route"></script>
+    <script src="app.js?v=20260708-atm-route"></script>
   </body>
 </html>

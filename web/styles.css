@@ -599,7 +599,7 @@ textarea {
 
 .editor-panel {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto 1fr;
   overflow: hidden;
 }
 
@@ -631,6 +631,65 @@ textarea {
   min-height: 0;
   overflow: auto;
   padding: 12px;
+}
+
+.atm-router-block {
+  margin: 12px;
+  margin-bottom: 0;
+  border-left: 4px solid var(--orange);
+}
+
+.atm-router-block .section-heading small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.segmented-controls {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7fafb;
+}
+
+.segmented-controls button {
+  min-height: 30px;
+  padding: 0 11px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 13px;
+}
+
+.segmented-controls button.active {
+  background: #fff;
+  color: var(--orange);
+  box-shadow: inset 0 -2px 0 var(--orange), 0 2px 8px rgba(22, 33, 42, 0.08);
+}
+
+.atm-basic-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 220px);
+}
+
+.atm-rows .row {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+.atm-fixed {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fbfc;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
 }
 
 .section-block {
@@ -1008,6 +1067,15 @@ label select {
 
   .toolbar button {
     flex: 1 1 140px;
+  }
+
+  .atm-router-block {
+    margin: 10px;
+  }
+
+  .atm-basic-grid,
+  .atm-rows .row {
+    grid-template-columns: 1fr;
   }
 
   .intro-strip {

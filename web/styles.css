@@ -719,7 +719,7 @@ textarea {
 }
 
 .atm-basic-grid {
-  grid-template-columns: minmax(0, 1fr) minmax(150px, 220px);
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 220px) minmax(120px, 160px);
 }
 
 .atm-rows .row {
@@ -799,6 +799,17 @@ textarea {
 
 .atm-adsl-field input {
   letter-spacing: 0.02em;
+}
+
+.atm-passbook-field {
+  align-self: end;
+  min-height: 48px;
+  justify-content: center;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbfc;
+  font-weight: 900;
 }
 
 .section-block {

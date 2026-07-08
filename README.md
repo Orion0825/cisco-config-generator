@@ -33,6 +33,7 @@ ATM 模式只保留需要修改的欄位：
 
 - 機號：只輸入機號，輸出自動加上 `ATM_`
 - ADSL IP：輸入網段基底後自動帶 Route、WAN、NAT
+- 補摺機：勾選後新增 `11.11.11.2` Static NAT
 - Static Route、Interface IP、Static NAT 可手動微調
 
 其他設定會依照內建範本保留。

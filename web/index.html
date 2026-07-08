@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cisco Config Generator</title>
-    <link rel="stylesheet" href="styles.css?v=20260708-nat-inside-labels">
+    <link rel="stylesheet" href="styles.css?v=20260708-passbook-nat">
   </head>
   <body>
     <div class="app-shell mode-general">
@@ -98,6 +98,10 @@
               <label>
                 型號
                 <input id="atmModelLabel" readonly>
+              </label>
+              <label class="switch atm-passbook-field">
+                <input id="atmPassbookEnabled" type="checkbox">
+                <span>補摺機</span>
               </label>
             </div>
             <div class="section-heading compact">
@@ -472,7 +476,7 @@
       </main>
     </div>
 
-    <script src="atm-templates.js?v=20260708-nat-inside-labels"></script>
-    <script src="app.js?v=20260708-nat-inside-labels"></script>
+    <script src="atm-templates.js?v=20260708-passbook-nat"></script>
+    <script src="app.js?v=20260708-passbook-nat"></script>
   </body>
 </html>

@@ -205,6 +205,7 @@ const ATM_ROUTE_TEMPLATES = window.ATM_ROUTE_TEMPLATES || {};
 const ATM_MODELS = Object.keys(ATM_ROUTE_TEMPLATES);
 const ATM_ADSL_MASK = "255.255.255.240";
 const ATM_HOSTNAME_PREFIX = "ATM_";
+const ATM_PASSBOOK_INSIDE_IP = "11.11.11.2";
 const SANITIZE_RULES = {
   hostname: /[^A-Za-z0-9_.-]/g,
   interface: /[^A-Za-z0-9/_.:-]/g,
@@ -258,6 +259,7 @@ const elements = {
   atmModelButtons: document.querySelector("#atmModelButtons"),
   atmHostname: document.querySelector("#atmHostname"),
   atmModelLabel: document.querySelector("#atmModelLabel"),
+  atmPassbookEnabled: document.querySelector("#atmPassbookEnabled"),
   atmAdslRows: document.querySelector("#atmAdslRows"),
   atmInterfaceRows: document.querySelector("#atmInterfaceRows"),
   atmNatRows: document.querySelector("#atmNatRows"),
@@ -918,8 +920,22 @@ function atmHostnameFromUnitId(value) {
 function atmNatInsideLabel(insideIp) {
   if (insideIp === "11.11.11.1") return "ATM NAT IP";
   if (insideIp === "11.11.11.9") return "DVR NAT IP";
-  if (insideIp === "11.11.11.2") return "PB NAT IP";
+  if (insideIp === ATM_PASSBOOK_INSIDE_IP) return "補摺機 NAT IP";
   return "Static Inside";
+}
+
+function syncAtmPassbookNatRule(targetState = atmState) {
+  targetState.natRules ||= [];
+  const existingIndex = targetState.natRules.findIndex((item) => item.insideIp === ATM_PASSBOOK_INSIDE_IP);
+
+  if (!targetState.hasPassbook) {
+    if (existingIndex >= 0) targetState.natRules.splice(existingIndex, 1);
+    return;
+  }
+
+  if (existingIndex >= 0) return;
+  const outsideIp = isIpv4Address(targetState.adsl?.address || "") ? offsetIpv4(targetState.adsl.address, 5) : "";
+  targetState.natRules.push({ insideIp: ATM_PASSBOOK_INSIDE_IP, outsideIp });
 }
 
 function createAtmState(model, saved = {}) {
@@ -947,9 +963,17 @@ function createAtmState(model, saved = {}) {
     address: saved.adsl?.address || inferAtmAdslAddress({ interfaces, natRules, staticRoutes }),
     mask: ATM_ADSL_MASK,
   };
+  const hasPassbook = !!saved.hasPassbook || savedNatRules.has(ATM_PASSBOOK_INSIDE_IP);
+  if (hasPassbook && !natRules.some((item) => item.insideIp === ATM_PASSBOOK_INSIDE_IP)) {
+    natRules.push({
+      insideIp: ATM_PASSBOOK_INSIDE_IP,
+      outsideIp: savedNatRules.get(ATM_PASSBOOK_INSIDE_IP)?.outsideIp || offsetIpv4(adsl.address, 5),
+    });
+  }
   return {
     model: selectedModel,
     hostname: atmHostnameFromUnitId(saved.hostname || parsed.hostname),
+    hasPassbook,
     adsl,
     interfaces,
     natRules,
@@ -959,7 +983,7 @@ function createAtmState(model, saved = {}) {
 
 function readAtmValuesFromConfig(content, fallbackName = "") {
   const lines = normalizeConfigText(content).split("\n");
-  const values = { hostname: "", interfaces: [], natRules: [], staticRoutes: [] };
+  const values = { hostname: "", hasPassbook: false, interfaces: [], natRules: [], staticRoutes: [] };
   const interfaceAddresses = new Map();
   const natRules = new Map();
   const staticRoutes = new Map();
@@ -1024,6 +1048,10 @@ function readAtmValuesFromConfig(content, fallbackName = "") {
     insideIp: item.insideIp,
     outsideIp: item.outsideIp,
   });
+  if (natRules.has(ATM_PASSBOOK_INSIDE_IP)) {
+    values.hasPassbook = true;
+    values.natRules.push(natRules.get(ATM_PASSBOOK_INSIDE_IP));
+  }
   values.staticRoutes = parsed.staticRoutes.map((item) => staticRoutes.get(`${item.destination} ${item.mask}`) || {
     destination: item.destination,
     mask: item.mask,
@@ -1039,6 +1067,7 @@ function atmOutputFilename() {
 
 function renderAtmConfig() {
   const parsed = parseAtmTemplate(atmState.model);
+  syncAtmPassbookNatRule();
   const lines = parsed.template.split("\n");
   const errors = [];
   const interfaceValues = new Map((atmState.interfaces || []).map((item) => [item.name, item]));
@@ -1069,6 +1098,16 @@ function renderAtmConfig() {
     if (!isIpv4Address(value)) errors.push(`ATM路由 ${item.destination}/${item.mask}: static route 下一跳 IP 不是有效 IPv4`);
     lines[item.lineIndex] = `${item.prefix}${item.destination}${item.destinationSeparator}${item.mask}${item.nextHopSeparator}${value}${item.suffix}`;
   });
+
+  const parsedNatKeys = new Set(parsed.natRules.map((item) => item.insideIp));
+  const extraNatRules = (atmState.natRules || []).filter((item) => !parsedNatKeys.has(item.insideIp));
+  extraNatRules.forEach((item) => {
+    if (!isIpv4Address(item.outsideIp || "")) errors.push(`ATM路由 NAT ${item.insideIp}: 對應 IP 不是有效 IPv4`);
+  });
+  if (extraNatRules.length) {
+    const insertAt = parsed.natRules.length ? Math.max(...parsed.natRules.map((item) => item.lineIndex)) + 1 : lines.length - 1;
+    lines.splice(insertAt, 0, ...extraNatRules.map((item) => `ip nat inside source static ${item.insideIp} ${item.outsideIp}`));
+  }
 
   const content = lines.join("\n").replace(/\n*$/, "\n");
   return { filename: atmOutputFilename(), content, errors };
@@ -1110,6 +1149,7 @@ function renderAtmForm() {
   const parsed = parseAtmTemplate(atmState.model);
   elements.atmHostname.value = atmUnitIdFromHostname(atmState.hostname || "");
   elements.atmModelLabel.value = parsed.label;
+  elements.atmPassbookEnabled.checked = !!atmState.hasPassbook;
   atmState.adsl ||= {
     interfaceName: "N/A",
     address: inferAtmAdslAddress(atmState),
@@ -1117,6 +1157,7 @@ function renderAtmForm() {
   };
   atmState.adsl.interfaceName = "N/A";
   atmState.adsl.mask = ATM_ADSL_MASK;
+  syncAtmPassbookNatRule();
   elements.atmAdslRows.innerHTML = "";
   elements.atmAdslRows.appendChild(atmRow("atmAdsl", 0, [
     fixedAtmField("Interface", atmState.adsl.interfaceName, "span-4"),
@@ -1199,10 +1240,22 @@ function updateAtmHostname() {
   renderOutputAndSave();
 }
 
+function updateAtmPassbookEnabled() {
+  atmState.hasPassbook = elements.atmPassbookEnabled.checked;
+  syncAtmPassbookNatRule();
+  syncAtmFromAdslAddress();
+  renderAtmForm();
+  selectedOutputFile = atmOutputFilename();
+  renderOutputAndSave();
+  elements.statusText.textContent = atmState.hasPassbook
+    ? "已新增補摺機 NAT 11.11.11.2"
+    : "已移除補摺機 NAT";
+}
+
 function switchAtmModel(model) {
   if (!ATM_ROUTE_TEMPLATES[model]) return;
   const savedAdsl = atmState.adsl ? structuredClone(atmState.adsl) : undefined;
-  atmState = createAtmState(model, { hostname: atmState.hostname, ...(savedAdsl ? { adsl: savedAdsl } : {}) });
+  atmState = createAtmState(model, { hostname: atmState.hostname, hasPassbook: atmState.hasPassbook, ...(savedAdsl ? { adsl: savedAdsl } : {}) });
   syncAtmFromAdslAddress();
   selectedOutputFile = atmOutputFilename();
   renderAtmForm();
@@ -3624,6 +3677,7 @@ elements.atmModelButtons.addEventListener("click", (event) => {
   switchAtmModel(button.dataset.model);
 });
 elements.atmHostname.addEventListener("input", updateAtmHostname);
+elements.atmPassbookEnabled.addEventListener("change", updateAtmPassbookEnabled);
 elements.atmAdslRows.addEventListener("input", updateAtmFromEvent);
 elements.atmInterfaceRows.addEventListener("input", updateAtmFromEvent);
 elements.atmNatRows.addEventListener("input", updateAtmFromEvent);

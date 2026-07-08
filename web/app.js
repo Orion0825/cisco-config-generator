@@ -261,6 +261,7 @@ const elements = {
   atmModelLabel: document.querySelector("#atmModelLabel"),
   atmInterfaceRows: document.querySelector("#atmInterfaceRows"),
   atmNatRows: document.querySelector("#atmNatRows"),
+  atmRouteRows: document.querySelector("#atmRouteRows"),
   vlanRows: document.querySelector("#vlanRows"),
   interfaceRows: document.querySelector("#interfaceRows"),
   staticRouteSection: document.querySelector("#staticRouteSection"),
@@ -760,6 +761,7 @@ function parseAtmTemplate(model) {
     hostname: `ATM_${model}`,
     interfaces: [],
     natRules: [],
+    staticRoutes: [],
   };
   let currentInterface = "";
 
@@ -799,6 +801,21 @@ function parseAtmTemplate(model) {
         outsideIp: match[4],
         suffix: match[5] || "",
       });
+      return;
+    }
+
+    match = line.match(/^(ip route\s+)(\S+)(\s+)(\S+)(\s+)(\S+)(.*)$/i);
+    if (match) {
+      parsed.staticRoutes.push({
+        lineIndex: index,
+        prefix: match[1],
+        destination: match[2],
+        destinationSeparator: match[3],
+        mask: match[4],
+        nextHopSeparator: match[5],
+        nextHop: match[6],
+        suffix: match[7] || "",
+      });
     }
   });
 
@@ -810,6 +827,7 @@ function createAtmState(model, saved = {}) {
   const parsed = parseAtmTemplate(selectedModel);
   const savedInterfaces = new Map((saved.interfaces || []).map((item) => [item.name, item]));
   const savedNatRules = new Map((saved.natRules || []).map((item) => [item.insideIp, item]));
+  const savedStaticRoutes = new Map((saved.staticRoutes || []).map((item) => [`${item.destination} ${item.mask}`, item]));
   return {
     model: selectedModel,
     hostname: saved.hostname || parsed.hostname,
@@ -822,14 +840,20 @@ function createAtmState(model, saved = {}) {
       insideIp: item.insideIp,
       outsideIp: savedNatRules.get(item.insideIp)?.outsideIp || item.outsideIp,
     })),
+    staticRoutes: parsed.staticRoutes.map((item) => ({
+      destination: item.destination,
+      mask: item.mask,
+      nextHop: savedStaticRoutes.get(`${item.destination} ${item.mask}`)?.nextHop || item.nextHop,
+    })),
   };
 }
 
 function readAtmValuesFromConfig(content, fallbackName = "") {
   const lines = normalizeConfigText(content).split("\n");
-  const values = { hostname: "", interfaces: [], natRules: [] };
+  const values = { hostname: "", interfaces: [], natRules: [], staticRoutes: [] };
   const interfaceAddresses = new Map();
   const natRules = new Map();
+  const staticRoutes = new Map();
   let currentInterface = "";
 
   lines.forEach((rawLine) => {
@@ -855,6 +879,12 @@ function readAtmValuesFromConfig(content, fallbackName = "") {
     match = line.match(/^ip nat inside source static\s+(\S+)\s+(\S+)/i);
     if (match) {
       natRules.set(match[1], { insideIp: match[1], outsideIp: match[2] });
+      return;
+    }
+
+    match = line.match(/^ip route\s+(\S+)\s+(\S+)\s+(\S+)/i);
+    if (match) {
+      staticRoutes.set(`${match[1]} ${match[2]}`, { destination: match[1], mask: match[2], nextHop: match[3] });
     }
   });
 
@@ -866,6 +896,9 @@ function readAtmValuesFromConfig(content, fallbackName = "") {
     });
     parsed.natRules.forEach((item) => {
       if (natRules.has(item.insideIp)) score += 1;
+    });
+    parsed.staticRoutes.forEach((item) => {
+      if (staticRoutes.has(`${item.destination} ${item.mask}`)) score += 1;
     });
     return { model, score };
   }).sort((a, b) => b.score - a.score);
@@ -882,6 +915,11 @@ function readAtmValuesFromConfig(content, fallbackName = "") {
     insideIp: item.insideIp,
     outsideIp: item.outsideIp,
   });
+  values.staticRoutes = parsed.staticRoutes.map((item) => staticRoutes.get(`${item.destination} ${item.mask}`) || {
+    destination: item.destination,
+    mask: item.mask,
+    nextHop: item.nextHop,
+  });
   return values;
 }
 
@@ -896,6 +934,7 @@ function renderAtmConfig() {
   const errors = [];
   const interfaceValues = new Map((atmState.interfaces || []).map((item) => [item.name, item]));
   const natValues = new Map((atmState.natRules || []).map((item) => [item.insideIp, item]));
+  const routeValues = new Map((atmState.staticRoutes || []).map((item) => [`${item.destination} ${item.mask}`, item]));
 
   if (!HOSTNAME_PATTERN.test(atmState.hostname || "")) errors.push("ATM路由: hostname 含中文或非 Cisco CLI 安全字元");
   if (parsed.hostnameLine !== undefined) lines[parsed.hostnameLine] = `hostname ${atmState.hostname}`;
@@ -910,6 +949,12 @@ function renderAtmConfig() {
     const value = natValues.get(item.insideIp)?.outsideIp || item.outsideIp;
     if (!isIpv4Address(value)) errors.push(`ATM路由 NAT ${item.insideIp}: 最後 IP 不是有效 IPv4`);
     lines[item.lineIndex] = `${item.prefix}${item.insideIp}${item.separator}${value}${item.suffix}`;
+  });
+
+  parsed.staticRoutes.forEach((item) => {
+    const value = routeValues.get(`${item.destination} ${item.mask}`)?.nextHop || item.nextHop;
+    if (!isIpv4Address(value)) errors.push(`ATM路由 ${item.destination}/${item.mask}: static route 下一跳 IP 不是有效 IPv4`);
+    lines[item.lineIndex] = `${item.prefix}${item.destination}${item.destinationSeparator}${item.mask}${item.nextHopSeparator}${value}${item.suffix}`;
   });
 
   const content = lines.join("\n").replace(/\n*$/, "\n");
@@ -969,6 +1014,15 @@ function renderAtmForm() {
       fixedAtmField("指令", "ip nat inside source static", "span-4"),
     ]));
   });
+
+  elements.atmRouteRows.innerHTML = "";
+  (atmState.staticRoutes || []).forEach((item, index) => {
+    elements.atmRouteRows.appendChild(atmRow("atmRoute", index, [
+      fixedAtmField("Destination", item.destination, "span-4"),
+      fixedAtmField("Mask", item.mask, "span-4"),
+      field("下一跳 IP", "nextHop", item.nextHop || "", "text", "span-4", { inputmode: "decimal" }),
+    ]));
+  });
 }
 
 function updateAtmFromEvent(event) {
@@ -984,6 +1038,9 @@ function updateAtmFromEvent(event) {
   }
   if (row.dataset.kind === "atmNat" && atmState.natRules[index]) {
     atmState.natRules[index][key] = target.value.trim();
+  }
+  if (row.dataset.kind === "atmRoute" && atmState.staticRoutes[index]) {
+    atmState.staticRoutes[index][key] = target.value.trim();
   }
   selectedOutputFile = atmOutputFilename();
   renderOutputAndSave();
@@ -3412,6 +3469,7 @@ elements.atmModelButtons.addEventListener("click", (event) => {
 elements.atmHostname.addEventListener("input", updateAtmHostname);
 elements.atmInterfaceRows.addEventListener("input", updateAtmFromEvent);
 elements.atmNatRows.addEventListener("input", updateAtmFromEvent);
+elements.atmRouteRows.addEventListener("input", updateAtmFromEvent);
 
 elements.uploadConfigBtn.addEventListener("click", beginConfigUpload);
 elements.uploadConfigBtn.addEventListener("keydown", (event) => {

@@ -368,30 +368,25 @@ textarea {
   white-space: nowrap;
 }
 
-.intro-flow {
+.intro-platforms {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
 
-.intro-flow button {
+.intro-platforms span {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 26px;
   padding: 0 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 255, 255, 0.9);
   border: 1px solid #d4e1e7;
   color: #36505f;
   font-size: 12px;
   font-weight: 800;
-}
-
-.intro-flow button:hover {
-  border-color: var(--accent);
-  color: var(--accent-strong);
 }
 
 .attention-flash {
@@ -1206,11 +1201,11 @@ label select {
     white-space: normal;
   }
 
-  .intro-flow {
+  .intro-platforms {
     justify-content: stretch;
   }
 
-  .intro-flow button {
+  .intro-platforms span {
     flex: 1;
     justify-content: center;
   }

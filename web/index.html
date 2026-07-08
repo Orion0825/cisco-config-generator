@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cisco Config Generator</title>
-    <link rel="stylesheet" href="styles.css?v=20260708-atm-focus-fields">
+    <link rel="stylesheet" href="styles.css?v=20260708-slim-intro">
   </head>
   <body>
     <div class="app-shell mode-general">
@@ -51,12 +51,11 @@
       <section class="intro-strip" aria-label="工具摘要">
         <div class="intro-copy">
           <span class="intro-eyebrow">Cisco 編輯器 by Orion</span>
-          <strong>從設備資料產生可直接貼上的 Cisco CLI config</strong>
+          <strong>網頁版與桌面版的 Cisco 設定檔產生器</strong>
         </div>
-        <div class="intro-flow" aria-label="操作流程">
-          <button id="introEditBtn" type="button">編輯設備</button>
-          <button id="introOutputBtn" type="button">檢查輸出</button>
-          <button id="introCopyBtn" type="button">複製貼上</button>
+        <div class="intro-platforms" aria-label="支援版本">
+          <span>網頁版</span>
+          <span>桌面版</span>
         </div>
       </section>
 
@@ -455,14 +454,14 @@
           </div>
           <select id="outputSelect" aria-label="選擇輸出檔案"></select>
           <div class="copy-zone-label">
-            <span>Cisco CLI 可複製貼上區</span>
-            <small>產生後可直接貼到 Console / SSH</small>
+            <span>設定檔輸出</span>
+            <small>可複製或下載 CFG</small>
           </div>
           <div id="configDropZone" class="upload-drop-zone" role="button" tabindex="0">
             <strong>上傳或拖放 CFG/TXT</strong>
             <small>支援 .cfg / .txt，會同步左側設備與右側輸出</small>
           </div>
-          <textarea id="configOutput" spellcheck="false" readonly aria-label="Cisco CLI 可複製貼上設定"></textarea>
+          <textarea id="configOutput" spellcheck="false" readonly aria-label="Cisco 設定檔輸出"></textarea>
           <div class="output-actions">
             <button id="copyConfigBtn" type="button">複製到剪貼簿</button>
             <button id="downloadConfigBtn" type="button">下載 CFG</button>
@@ -473,7 +472,7 @@
       </main>
     </div>
 
-    <script src="atm-templates.js?v=20260708-atm-focus-fields"></script>
-    <script src="app.js?v=20260708-atm-focus-fields"></script>
+    <script src="atm-templates.js?v=20260708-slim-intro"></script>
+    <script src="app.js?v=20260708-slim-intro"></script>
   </body>
 </html>

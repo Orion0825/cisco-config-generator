@@ -915,6 +915,13 @@ function atmHostnameFromUnitId(value) {
   return `${ATM_HOSTNAME_PREFIX}${atmUnitIdFromHostname(value)}`;
 }
 
+function atmNatOutsideLabel(insideIp) {
+  if (insideIp === "11.11.11.1") return "ATM NAT IP";
+  if (insideIp === "11.11.11.9") return "DVR NAT IP";
+  if (insideIp === "11.11.11.2") return "PB NAT IP";
+  return "NAT IP";
+}
+
 function createAtmState(model, saved = {}) {
   const selectedModel = ATM_ROUTE_TEMPLATES[model] ? model : ATM_MODELS[0] || "881";
   const parsed = parseAtmTemplate(selectedModel);
@@ -1139,7 +1146,7 @@ function renderAtmForm() {
   (atmState.natRules || []).forEach((item, index) => {
     elements.atmNatRows.appendChild(atmRow("atmNat", index, [
       fixedAtmField("Static Inside", item.insideIp, "span-4"),
-      field("最後 IP", "outsideIp", item.outsideIp || "", "text", "span-4", { inputmode: "decimal" }),
+      field(atmNatOutsideLabel(item.insideIp), "outsideIp", item.outsideIp || "", "text", "span-4", { inputmode: "decimal" }),
       fixedAtmField("指令", "ip nat inside source static", "span-4"),
     ]));
   });

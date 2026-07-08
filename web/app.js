@@ -1116,7 +1116,7 @@ function renderAtmForm() {
   elements.atmAdslRows.innerHTML = "";
   elements.atmAdslRows.appendChild(atmRow("atmAdsl", 0, [
     fixedAtmField("Interface", atmState.adsl.interfaceName, "span-4"),
-    field("ADSL IP網段", "address", atmState.adsl.address || "", "text", "span-4", { inputmode: "decimal", placeholder: "172.21.53.176" }),
+    field("ADSL IP", "address", atmState.adsl.address || "", "text", "span-4 atm-key-field atm-adsl-field", { inputmode: "decimal", placeholder: "172.21.53.176" }),
     fixedAtmField("Mask 固定", atmState.adsl.mask, "span-4"),
   ]));
 

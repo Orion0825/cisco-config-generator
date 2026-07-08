@@ -731,40 +731,6 @@ textarea {
   grid-template-columns: repeat(12, minmax(0, 1fr));
 }
 
-.atm-offset-guide {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  margin: 8px 0 14px;
-}
-
-.atm-offset-guide span {
-  min-height: 34px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 10px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: #f8fbfc;
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.atm-offset-guide strong {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 22px;
-  border-radius: 6px;
-  background: var(--orange);
-  color: #fff;
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
 .atm-fixed {
   min-height: 34px;
   display: flex;
@@ -776,6 +742,68 @@ textarea {
   color: var(--muted);
   font-family: var(--mono);
   font-size: 12px;
+}
+
+.atm-key-field {
+  padding: 9px;
+  border: 1px solid rgba(196, 90, 27, 0.34);
+  border-radius: 8px;
+  background: #fff8f3;
+  color: #8f3f11;
+  box-shadow: inset 0 0 0 1px rgba(196, 90, 27, 0.08);
+}
+
+.atm-key-field input {
+  border-color: rgba(196, 90, 27, 0.46);
+  background: #fff;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.atm-key-field input:focus {
+  border-color: var(--orange);
+  box-shadow: 0 0 0 3px rgba(196, 90, 27, 0.16);
+}
+
+.atm-prefixed-input {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  min-height: 38px;
+  border: 1px solid rgba(196, 90, 27, 0.46);
+  border-radius: 7px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.atm-prefixed-input:focus-within {
+  border-color: var(--orange);
+  box-shadow: 0 0 0 3px rgba(196, 90, 27, 0.16);
+}
+
+.atm-prefixed-input span {
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  background: #fff0e6;
+  color: #8f3f11;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.atm-prefixed-input input {
+  min-height: 36px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.atm-adsl-field input {
+  letter-spacing: 0.02em;
 }
 
 .section-block {
@@ -1161,10 +1189,6 @@ label select {
 
   .atm-basic-grid,
   .atm-rows .row {
-    grid-template-columns: 1fr;
-  }
-
-  .atm-offset-guide {
     grid-template-columns: 1fr;
   }
 

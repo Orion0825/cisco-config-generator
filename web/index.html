@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cisco Config Generator</title>
-    <link rel="stylesheet" href="styles.css?v=20260708-atm-route-next-hop">
+    <link rel="stylesheet" href="styles.css?v=20260708-atm-adsl-plan">
   </head>
   <body>
     <div class="app-shell mode-general">
@@ -84,7 +84,7 @@
             <div class="section-heading">
               <div>
                 <h2>ATM路由</h2>
-                <small>只開放 hostname、interface IP、static NAT 最後 IP、static route 下一跳 IP</small>
+                <small>只開放 hostname、ADSL IP網段、static route、WAN interface、static NAT</small>
               </div>
               <div id="atmModelButtons" class="segmented-controls" role="tablist" aria-label="ATM 型號"></div>
             </div>
@@ -99,20 +99,31 @@
               </label>
             </div>
             <div class="section-heading compact">
-              <h3>Interface IP</h3>
-              <small>Description 保留範本原值</small>
+              <h3>ADSL IP</h3>
+              <small>Interface 固定 N/A；輸入網段基底後自動套用 +1/+2/+3/+4</small>
             </div>
-            <div id="atmInterfaceRows" class="rows atm-rows"></div>
-            <div class="section-heading compact">
-              <h3>Static NAT</h3>
-              <small>只修改 ip nat inside source static 最後面的 IP</small>
+            <div id="atmAdslRows" class="rows atm-rows"></div>
+            <div class="atm-offset-guide" aria-label="ADSL IP 對應規則">
+              <span><strong>+1</strong> Static Route 下一跳</span>
+              <span><strong>+2</strong> WAN Interface</span>
+              <span><strong>+3</strong> ATM NAT</span>
+              <span><strong>+4</strong> DVR NAT</span>
             </div>
-            <div id="atmNatRows" class="rows atm-rows"></div>
             <div class="section-heading compact">
               <h3>Static Route</h3>
               <small>只修改 ip route 最後面的下一跳 IP</small>
             </div>
             <div id="atmRouteRows" class="rows atm-rows"></div>
+            <div class="section-heading compact">
+              <h3>Interface IP</h3>
+              <small>WAN 由 ADSL +2 帶入；LAN 可手動微調，Description 保留範本原值</small>
+            </div>
+            <div id="atmInterfaceRows" class="rows atm-rows"></div>
+            <div class="section-heading compact">
+              <h3>Static NAT</h3>
+              <small>由上而下套用 ATM +3、DVR +4；只修改最後面的 IP</small>
+            </div>
+            <div id="atmNatRows" class="rows atm-rows"></div>
           </section>
 
           <form id="deviceForm" class="form-stack">
@@ -468,7 +479,7 @@
       </main>
     </div>
 
-    <script src="atm-templates.js?v=20260708-atm-route-next-hop"></script>
-    <script src="app.js?v=20260708-atm-route-next-hop"></script>
+    <script src="atm-templates.js?v=20260708-atm-adsl-plan"></script>
+    <script src="app.js?v=20260708-atm-adsl-plan"></script>
   </body>
 </html>

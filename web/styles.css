@@ -731,6 +731,40 @@ textarea {
   grid-template-columns: repeat(12, minmax(0, 1fr));
 }
 
+.atm-offset-guide {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 8px 0 14px;
+}
+
+.atm-offset-guide span {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fbfc;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.atm-offset-guide strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--orange);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
 .atm-fixed {
   min-height: 34px;
   display: flex;
@@ -1127,6 +1161,10 @@ label select {
 
   .atm-basic-grid,
   .atm-rows .row {
+    grid-template-columns: 1fr;
+  }
+
+  .atm-offset-guide {
     grid-template-columns: 1fr;
   }
 

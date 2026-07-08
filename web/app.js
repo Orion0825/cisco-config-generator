@@ -203,6 +203,7 @@ const PROFILE_CURRENT_KEY = "ciscoConfigGenerator.currentProfile.v1";
 const PROFILE_DATA_PREFIX = "ciscoConfigGenerator.profile.v1.";
 const ATM_ROUTE_TEMPLATES = window.ATM_ROUTE_TEMPLATES || {};
 const ATM_MODELS = Object.keys(ATM_ROUTE_TEMPLATES);
+const ATM_ADSL_MASK = "255.255.255.240";
 const SANITIZE_RULES = {
   hostname: /[^A-Za-z0-9_.-]/g,
   interface: /[^A-Za-z0-9/_.:-]/g,
@@ -259,6 +260,7 @@ const elements = {
   atmModelButtons: document.querySelector("#atmModelButtons"),
   atmHostname: document.querySelector("#atmHostname"),
   atmModelLabel: document.querySelector("#atmModelLabel"),
+  atmAdslRows: document.querySelector("#atmAdslRows"),
   atmInterfaceRows: document.querySelector("#atmInterfaceRows"),
   atmNatRows: document.querySelector("#atmNatRows"),
   atmRouteRows: document.querySelector("#atmRouteRows"),
@@ -822,29 +824,120 @@ function parseAtmTemplate(model) {
   return parsed;
 }
 
+function offsetIpv4(value, offset) {
+  if (!isIpv4Address(value)) return "";
+  const next = ipToInt(value) + offset;
+  if (next < 0 || next > 0xffffffff) return "";
+  return intToIp(next >>> 0);
+}
+
+function atmWanInterface(interfaces = []) {
+  return interfaces.find((item) => item.name && !/^vlan/i.test(item.name)) || interfaces[0] || null;
+}
+
+function atmPrimaryRoute(staticRoutes = []) {
+  return staticRoutes.find((item) => item.destination === "10.0.0.0" && item.mask === "255.0.0.0") || staticRoutes[0] || null;
+}
+
+function inferAtmAdslAddress(source = {}) {
+  const route = atmPrimaryRoute(source.staticRoutes || []);
+  if (route?.nextHop && isIpv4Address(route.nextHop)) return offsetIpv4(route.nextHop, -1);
+
+  const wan = atmWanInterface(source.interfaces || []);
+  if (wan?.address && isIpv4Address(wan.address)) return offsetIpv4(wan.address, -2);
+
+  const natRules = source.natRules || [];
+  const atmNat = natRules.find((item) => item.insideIp === "11.11.11.1");
+  if (atmNat?.outsideIp && isIpv4Address(atmNat.outsideIp)) return offsetIpv4(atmNat.outsideIp, -3);
+
+  const dvrNat = natRules.find((item) => item.insideIp === "11.11.11.9");
+  if (dvrNat?.outsideIp && isIpv4Address(dvrNat.outsideIp)) return offsetIpv4(dvrNat.outsideIp, -4);
+
+  const firstNat = natRules.find((item) => item.outsideIp && isIpv4Address(item.outsideIp));
+  return firstNat ? offsetIpv4(firstNat.outsideIp, -3) : "";
+}
+
+function syncAtmFromAdslAddress() {
+  const baseAddress = atmState.adsl?.address || "";
+  if (!isIpv4Address(baseAddress)) return false;
+
+  const route = atmPrimaryRoute(atmState.staticRoutes || []);
+  if (route) route.nextHop = offsetIpv4(baseAddress, 1);
+
+  const wan = atmWanInterface(atmState.interfaces || []);
+  if (wan) wan.address = offsetIpv4(baseAddress, 2);
+
+  const preferredOffsets = new Map([
+    ["11.11.11.1", 3],
+    ["11.11.11.9", 4],
+    ["11.11.11.2", 5],
+  ]);
+  const usedOffsets = new Set();
+  (atmState.natRules || []).forEach((item) => {
+    const offset = preferredOffsets.get(item.insideIp);
+    if (!offset) return;
+    item.outsideIp = offsetIpv4(baseAddress, offset);
+    usedOffsets.add(offset);
+  });
+
+  let nextOffset = 3;
+  (atmState.natRules || []).forEach((item) => {
+    if (preferredOffsets.has(item.insideIp)) return;
+    while (usedOffsets.has(nextOffset)) nextOffset += 1;
+    item.outsideIp = offsetIpv4(baseAddress, nextOffset);
+    usedOffsets.add(nextOffset);
+  });
+
+  return true;
+}
+
+function syncAtmDerivedInputs() {
+  const syncRows = (container, items, key) => {
+    if (!container) return;
+    container.querySelectorAll(".row").forEach((row) => {
+      const index = Number(row.dataset.index);
+      const input = row.querySelector(`input[data-key="${key}"]`);
+      if (!input || !items[index]) return;
+      input.value = items[index][key] || "";
+    });
+  };
+  syncRows(elements.atmRouteRows, atmState.staticRoutes || [], "nextHop");
+  syncRows(elements.atmInterfaceRows, atmState.interfaces || [], "address");
+  syncRows(elements.atmNatRows, atmState.natRules || [], "outsideIp");
+}
+
 function createAtmState(model, saved = {}) {
   const selectedModel = ATM_ROUTE_TEMPLATES[model] ? model : ATM_MODELS[0] || "881";
   const parsed = parseAtmTemplate(selectedModel);
   const savedInterfaces = new Map((saved.interfaces || []).map((item) => [item.name, item]));
   const savedNatRules = new Map((saved.natRules || []).map((item) => [item.insideIp, item]));
   const savedStaticRoutes = new Map((saved.staticRoutes || []).map((item) => [`${item.destination} ${item.mask}`, item]));
+  const interfaces = parsed.interfaces.map((item) => ({
+    name: item.name,
+    address: savedInterfaces.get(item.name)?.address || item.address,
+    mask: item.mask,
+  }));
+  const natRules = parsed.natRules.map((item) => ({
+    insideIp: item.insideIp,
+    outsideIp: savedNatRules.get(item.insideIp)?.outsideIp || item.outsideIp,
+  }));
+  const staticRoutes = parsed.staticRoutes.map((item) => ({
+    destination: item.destination,
+    mask: item.mask,
+    nextHop: savedStaticRoutes.get(`${item.destination} ${item.mask}`)?.nextHop || item.nextHop,
+  }));
+  const adsl = {
+    interfaceName: "N/A",
+    address: saved.adsl?.address || inferAtmAdslAddress({ interfaces, natRules, staticRoutes }),
+    mask: ATM_ADSL_MASK,
+  };
   return {
     model: selectedModel,
     hostname: saved.hostname || parsed.hostname,
-    interfaces: parsed.interfaces.map((item) => ({
-      name: item.name,
-      address: savedInterfaces.get(item.name)?.address || item.address,
-      mask: item.mask,
-    })),
-    natRules: parsed.natRules.map((item) => ({
-      insideIp: item.insideIp,
-      outsideIp: savedNatRules.get(item.insideIp)?.outsideIp || item.outsideIp,
-    })),
-    staticRoutes: parsed.staticRoutes.map((item) => ({
-      destination: item.destination,
-      mask: item.mask,
-      nextHop: savedStaticRoutes.get(`${item.destination} ${item.mask}`)?.nextHop || item.nextHop,
-    })),
+    adsl,
+    interfaces,
+    natRules,
+    staticRoutes,
   };
 }
 
@@ -937,6 +1030,7 @@ function renderAtmConfig() {
   const routeValues = new Map((atmState.staticRoutes || []).map((item) => [`${item.destination} ${item.mask}`, item]));
 
   if (!HOSTNAME_PATTERN.test(atmState.hostname || "")) errors.push("ATM路由: hostname 含中文或非 Cisco CLI 安全字元");
+  if (atmState.adsl?.address && !isIpv4Address(atmState.adsl.address)) errors.push("ATM路由 ADSL IP網段不是有效 IPv4");
   if (parsed.hostnameLine !== undefined) lines[parsed.hostnameLine] = `hostname ${atmState.hostname}`;
 
   parsed.interfaces.forEach((item) => {
@@ -997,6 +1091,29 @@ function renderAtmForm() {
   const parsed = parseAtmTemplate(atmState.model);
   elements.atmHostname.value = atmState.hostname || "";
   elements.atmModelLabel.value = parsed.label;
+  atmState.adsl ||= {
+    interfaceName: "N/A",
+    address: inferAtmAdslAddress(atmState),
+    mask: ATM_ADSL_MASK,
+  };
+  atmState.adsl.interfaceName = "N/A";
+  atmState.adsl.mask = ATM_ADSL_MASK;
+  elements.atmAdslRows.innerHTML = "";
+  elements.atmAdslRows.appendChild(atmRow("atmAdsl", 0, [
+    fixedAtmField("Interface", atmState.adsl.interfaceName, "span-4"),
+    field("ADSL IP網段", "address", atmState.adsl.address || "", "text", "span-4", { inputmode: "decimal", placeholder: "172.21.53.176" }),
+    fixedAtmField("Mask 固定", atmState.adsl.mask, "span-4"),
+  ]));
+
+  elements.atmRouteRows.innerHTML = "";
+  (atmState.staticRoutes || []).forEach((item, index) => {
+    elements.atmRouteRows.appendChild(atmRow("atmRoute", index, [
+      fixedAtmField("Destination", item.destination, "span-4"),
+      fixedAtmField("Mask", item.mask, "span-4"),
+      field("下一跳 IP", "nextHop", item.nextHop || "", "text", "span-4", { inputmode: "decimal" }),
+    ]));
+  });
+
   elements.atmInterfaceRows.innerHTML = "";
   (atmState.interfaces || []).forEach((item, index) => {
     elements.atmInterfaceRows.appendChild(atmRow("atmInterface", index, [
@@ -1014,25 +1131,30 @@ function renderAtmForm() {
       fixedAtmField("指令", "ip nat inside source static", "span-4"),
     ]));
   });
-
-  elements.atmRouteRows.innerHTML = "";
-  (atmState.staticRoutes || []).forEach((item, index) => {
-    elements.atmRouteRows.appendChild(atmRow("atmRoute", index, [
-      fixedAtmField("Destination", item.destination, "span-4"),
-      fixedAtmField("Mask", item.mask, "span-4"),
-      field("下一跳 IP", "nextHop", item.nextHop || "", "text", "span-4", { inputmode: "decimal" }),
-    ]));
-  });
 }
 
 function updateAtmFromEvent(event) {
   const target = event.target;
   if (!(target instanceof HTMLInputElement)) return;
   sanitizeTargetInput(target);
+  sanitizeAtmIpv4Input(target);
   const row = target.closest(".row");
   if (!row) return;
   const index = Number(row.dataset.index);
   const key = target.dataset.key;
+  let statusMessage = "";
+  if (row.dataset.kind === "atmAdsl") {
+    atmState.adsl ||= { interfaceName: "N/A", address: "", mask: ATM_ADSL_MASK };
+    atmState.adsl[key] = target.value.trim();
+    atmState.adsl.interfaceName = "N/A";
+    atmState.adsl.mask = ATM_ADSL_MASK;
+    if (syncAtmFromAdslAddress()) {
+      syncAtmDerivedInputs();
+      statusMessage = "已依 ADSL IP 套用 +1 Route、+2 WAN、+3/+4 NAT";
+    } else {
+      statusMessage = "請輸入有效 ADSL IP 網段，例如 172.21.53.176";
+    }
+  }
   if (row.dataset.kind === "atmInterface" && atmState.interfaces[index]) {
     atmState.interfaces[index][key] = target.value.trim();
   }
@@ -1044,6 +1166,7 @@ function updateAtmFromEvent(event) {
   }
   selectedOutputFile = atmOutputFilename();
   renderOutputAndSave();
+  if (statusMessage) elements.statusText.textContent = statusMessage;
 }
 
 function updateAtmHostname() {
@@ -1059,7 +1182,9 @@ function updateAtmHostname() {
 
 function switchAtmModel(model) {
   if (!ATM_ROUTE_TEMPLATES[model]) return;
-  atmState = createAtmState(model);
+  const savedAdsl = atmState.adsl ? structuredClone(atmState.adsl) : undefined;
+  atmState = createAtmState(model, savedAdsl ? { adsl: savedAdsl } : {});
+  syncAtmFromAdslAddress();
   selectedOutputFile = atmOutputFilename();
   renderAtmForm();
   renderOutputAndSave();
@@ -1521,6 +1646,23 @@ function sanitizeTargetInput(target) {
     target.setSelectionRange(Math.max(0, cursor - (original.length - cleaned.length)), Math.max(0, cursor - (original.length - cleaned.length)));
     elements.statusText.textContent = "已移除中文或非 Cisco CLI 安全字元";
   }
+}
+
+function sanitizeAtmIpv4Input(target) {
+  if (!(target instanceof HTMLInputElement) || target.type !== "text") return;
+  const rowKind = target.closest(".row")?.dataset.kind;
+  const key = target.dataset.key;
+  if (!["atmAdsl", "atmInterface", "atmNat", "atmRoute"].includes(rowKind)) return;
+  if (!["address", "outsideIp", "nextHop"].includes(key)) return;
+
+  const original = target.value;
+  const cleaned = original.replace(/[^0-9.]/g, "");
+  if (cleaned === original) return;
+
+  const cursor = target.selectionStart ?? cleaned.length;
+  target.value = cleaned;
+  target.setSelectionRange(Math.max(0, cursor - (original.length - cleaned.length)), Math.max(0, cursor - (original.length - cleaned.length)));
+  elements.statusText.textContent = "ATM IP 欄位只保留數字與點號";
 }
 
 function updateDeviceFromForm(event) {
@@ -3467,6 +3609,7 @@ elements.atmModelButtons.addEventListener("click", (event) => {
   switchAtmModel(button.dataset.model);
 });
 elements.atmHostname.addEventListener("input", updateAtmHostname);
+elements.atmAdslRows.addEventListener("input", updateAtmFromEvent);
 elements.atmInterfaceRows.addEventListener("input", updateAtmFromEvent);
 elements.atmNatRows.addEventListener("input", updateAtmFromEvent);
 elements.atmRouteRows.addEventListener("input", updateAtmFromEvent);

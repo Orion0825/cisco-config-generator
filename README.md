@@ -281,9 +281,15 @@ npm run dist:mac
 npm run dist:win
 ```
 
-macOS 會輸出 `.dmg` 與 `.zip`，Windows 會輸出 `.exe` 安裝檔與 portable 版本。未做 Apple / Microsoft 簽章時，第一次開啟可能會出現安全提醒；正式發佈前建議再補 code signing。
+macOS 會輸出 `.dmg` 與 `.zip`，Windows 會輸出 `Setup.exe` 安裝檔。為了降低防毒誤判，正式公開下載不再發佈 Windows portable 免安裝版，並會在 Release 附上 `SHA256SUMS.txt` 供使用者核對檔案。
 
-要同時取得 macOS 與 Windows，建議直接用 GitHub Actions。進入 repo 的 `Actions` -> `Build Desktop Apps` -> 最新一次成功執行，下載 `Cisco-Config-Generator-macOS` 或 `Cisco-Config-Generator-Windows` artifact。
+要公開給朋友下載，請使用 GitHub Releases：
+
+```text
+https://github.com/Orion0825/cisco-config-generator/releases/latest
+```
+
+未做 Apple / Microsoft code signing 時，macOS Gatekeeper、Windows SmartScreen 或防毒軟體仍可能出現安全提醒。不要要求使用者關閉防毒；正規處理方式是使用 Release 下載、核對 SHA256，並在正式發佈前補上 Apple Developer ID notarization 與 Windows code signing certificate。如果被防毒誤判，可把 Release 連結與 SHA256 一起送交防毒廠商 false positive 申訴。
 
 ## GitHub / VS Code 流程
 

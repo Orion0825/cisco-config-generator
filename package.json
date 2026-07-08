@@ -1,6 +1,6 @@
 {
   "name": "cisco-config-generator",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Cisco Config Generator desktop app for macOS and Windows.",
   "main": "electron/main.js",
   "author": "Orion",
@@ -10,7 +10,7 @@
     "desktop": "electron .",
     "pack": "electron-builder --dir --publish never",
     "dist:mac": "electron-builder --mac dmg zip --x64 --arm64 --publish never",
-    "dist:win": "electron-builder --win nsis portable --x64 --publish never"
+    "dist:win": "electron-builder --win nsis --x64 --publish never"
   },
   "devDependencies": {
     "electron": "^31.0.0",
@@ -22,6 +22,7 @@
     "directories": {
       "output": "dist"
     },
+    "artifactName": "Cisco-Config-Generator-${version}-${os}-${arch}.${ext}",
     "files": [
       "electron/**/*",
       "web/**/*",
@@ -36,11 +37,11 @@
     },
     "win": {
       "target": [
-        "nsis",
-        "portable"
+        "nsis"
       ]
     },
     "nsis": {
+      "artifactName": "Cisco-Config-Generator-Setup-${version}-${arch}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,

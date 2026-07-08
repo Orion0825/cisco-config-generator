@@ -1,6 +1,6 @@
 {
   "name": "cisco-config-generator",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Cisco Config Generator desktop app for macOS and Windows.",
   "main": "electron/main.js",
   "author": "Orion",

@@ -4,11 +4,16 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    tags:
+      - "v*"
     paths:
       - "electron/**"
       - "web/**"
       - "package.json"
       - ".github/workflows/desktop.yml"
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -53,3 +58,21 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.files }}
           if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true

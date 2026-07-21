@@ -247,6 +247,7 @@ const elements = {
   duplicateDeviceBtn: document.querySelector("#duplicateDeviceBtn"),
   deleteDeviceBtn: document.querySelector("#deleteDeviceBtn"),
   deviceCount: document.querySelector("#deviceCount"),
+  devicePanelNote: document.querySelector("#devicePanelNote"),
   deviceList: document.querySelector("#deviceList"),
   deviceTab: document.querySelector("#deviceTab"),
   advancedTab: document.querySelector("#advancedTab"),
@@ -326,6 +327,7 @@ const elements = {
   addAclEntryBtn: document.querySelector("#addAclEntryBtn"),
   addNatRuleBtn: document.querySelector("#addNatRuleBtn"),
   outputCount: document.querySelector("#outputCount"),
+  outputPanelNote: document.querySelector("#outputPanelNote"),
   outputSelect: document.querySelector("#outputSelect"),
   configDropZone: document.querySelector("#configDropZone"),
   configOutput: document.querySelector("#configOutput"),
@@ -445,8 +447,17 @@ function renderSummary() {
 }
 
 function renderDeviceList() {
-  elements.deviceCount.textContent = String(state.devices.length);
+  elements.deviceCount.textContent = `${state.devices.length} 台`;
   elements.deviceList.innerHTML = "";
+  if (workspaceMode === "atm") {
+    elements.devicePanelNote.textContent = `ATM 模式已啟用，型號 ${atmState.model} 只顯示 ATM 專用編輯欄位`;
+  } else {
+    const activeDevice = currentDevice();
+    const meta = activeDevice
+      ? `${activeDevice.hostname || "未命名設備"} · ${normalizedDeviceLayer(activeDevice)} · ${activeDevice.platform || "ios"}`
+      : "先選設備，再編輯右側設定";
+    elements.devicePanelNote.textContent = meta;
+  }
 
   state.devices.forEach((device, index) => {
     const button = document.createElement("button");
@@ -1349,7 +1360,17 @@ function renderOutput() {
 
   elements.outputSelect.value = selectedOutputFile;
   elements.configOutput.value = configs[selectedOutputFile] || "";
-  elements.outputCount.textContent = String(files.length);
+  elements.outputCount.textContent = `${files.length} 份`;
+  const currentContent = elements.configOutput.value || "";
+  const lineCount = currentContent ? currentContent.replace(/\n$/, "").split("\n").length : 0;
+  if (!selectedOutputFile) {
+    elements.outputPanelNote.textContent = "目前沒有可顯示的輸出檔";
+  } else if (workspaceMode === "atm") {
+    elements.outputPanelNote.textContent = `${selectedOutputFile} · ATM ${atmState.model} · ${lineCount} 行`;
+  } else {
+    const source = uploadedFiles.includes(selectedOutputFile) ? "上傳" : "產生";
+    elements.outputPanelNote.textContent = `${selectedOutputFile} · ${source} · ${lineCount} 行`;
+  }
   const visibleErrors = workspaceMode === "atm" ? atmConfig.errors : result.errors;
   const visibleWarnings = workspaceMode === "atm" ? [] : [...result.warnings, ...uploadWarnings];
   if (visibleErrors.length) {

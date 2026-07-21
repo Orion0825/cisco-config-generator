@@ -414,7 +414,7 @@ textarea {
 .workspace {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(220px, 260px) minmax(430px, 1fr) minmax(360px, 44vw);
+  grid-template-columns: minmax(220px, 250px) minmax(520px, 1fr) minmax(340px, 38vw);
   gap: 12px;
   padding: 12px;
 }
@@ -476,6 +476,13 @@ textarea {
     linear-gradient(180deg, #ffffff, #f8fbfc);
   font-weight: 700;
   font-size: 13px;
+}
+
+.panel-note {
+  padding: 0 12px 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
 }
 
 .panel-title span {
@@ -1027,7 +1034,7 @@ label select {
 
 #outputSelect {
   width: calc(100% - 20px);
-  margin: 10px;
+  margin: 0 10px 10px;
   background:
     linear-gradient(180deg, #fff, #f8fbfc);
   font-weight: 700;
@@ -1167,6 +1174,10 @@ label select {
 .app-shell[data-workspace="atm"] .mode-toggle,
 .app-shell[data-workspace="atm"] #modeToggleBtn[aria-pressed="true"] {
   box-shadow: 0 8px 18px rgba(196, 90, 27, 0.1);
+}
+
+.app-shell[data-workspace="atm"] .panel-note {
+  color: #8f3f11;
 }
 
 .app-shell[data-workspace="atm"] .atm-router-block .section-heading h2::before {

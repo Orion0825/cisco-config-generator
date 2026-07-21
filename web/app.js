@@ -427,6 +427,7 @@ function renderWorkspaceMode() {
   const isAtmMode = workspaceMode === "atm";
   elements.appShell.classList.toggle("mode-atm", isAtmMode);
   elements.appShell.classList.toggle("mode-general", !isAtmMode);
+  elements.appShell.dataset.workspace = workspaceMode;
   elements.modeToggleBtn.textContent = isAtmMode ? "切回一般模式" : "切到 ATM 模式";
   elements.modeToggleBtn.setAttribute("aria-pressed", String(isAtmMode));
   elements.modeToggleBtn.title = isAtmMode ? "顯示一般 L2/L3 設備產生器" : "只顯示 ATM 路由設定區";
@@ -453,12 +454,13 @@ function renderDeviceList() {
     button.className = `device-item${index === selectedDeviceIndex ? " active" : ""}`;
     const layer = normalizedDeviceLayer(device);
     const tags = deviceTags(device);
+    const meta = [device.platform, device.role].filter(Boolean).join(" · ") || "ios";
     button.innerHTML = `
       <span class="device-title">
         <span>${escapeHtml(device.hostname || "未命名設備")}</span>
         <strong class="layer-chip ${layer.toLowerCase()}">${escapeHtml(layer)}</strong>
       </span>
-      <span class="device-meta">${escapeHtml(device.role || device.platform || "ios")}</span>
+      <span class="device-meta">${escapeHtml(meta)}</span>
       <span class="device-badges">${tags.map((tag) => `<span class="protocol-badge ${tag.toLowerCase()}">${escapeHtml(tag)}</span>`).join("")}</span>
     `;
     button.addEventListener("click", () => {

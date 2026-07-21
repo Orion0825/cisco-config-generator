@@ -28,12 +28,11 @@ body {
   margin: 0;
   min-width: 320px;
   background:
-    radial-gradient(circle at top left, rgba(31, 95, 153, 0.12), transparent 300px),
-    linear-gradient(180deg, #eaf3f0 0, var(--bg) 280px),
-    linear-gradient(90deg, rgba(31, 95, 153, 0.045) 1px, transparent 1px),
-    linear-gradient(0deg, rgba(15, 118, 110, 0.04) 1px, transparent 1px),
+    radial-gradient(circle at 8% 0%, rgba(31, 95, 153, 0.08), transparent 26%),
+    radial-gradient(circle at 100% 0%, rgba(196, 90, 27, 0.05), transparent 18%),
+    linear-gradient(180deg, #edf3f7 0, var(--bg) 250px),
     var(--bg);
-  background-size: auto, 36px 36px, 36px 36px;
+  background-size: auto;
   color: var(--text);
   font-family: var(--sans);
   letter-spacing: 0;
@@ -55,12 +54,12 @@ button,
   justify-content: center;
   min-height: 34px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 7px;
   background: linear-gradient(180deg, #fff, #f7fafb);
   color: var(--text);
   cursor: pointer;
   white-space: nowrap;
-  font-weight: 750;
+  font-weight: 700;
   box-shadow: 0 1px 0 rgba(22, 33, 42, 0.04);
   transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
 }
@@ -136,44 +135,44 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 18px;
+  padding: 15px 18px;
   border-bottom: 1px solid var(--line);
   background:
-    linear-gradient(90deg, rgba(15, 118, 110, 0.1), rgba(255, 255, 255, 0.72) 34%, rgba(31, 95, 153, 0.06)),
-    rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 1px 0 rgba(22, 33, 42, 0.03), 0 10px 28px rgba(22, 33, 42, 0.06);
+    linear-gradient(90deg, rgba(15, 118, 110, 0.09), rgba(255, 255, 255, 0.82) 36%, rgba(31, 95, 153, 0.05)),
+    rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 1px 0 rgba(22, 33, 42, 0.03), 0 10px 24px rgba(22, 33, 42, 0.05);
 }
 
 .brand-block {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-width: 240px;
+  min-width: 260px;
 }
 
 .brand-mark {
   display: grid;
   place-items: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 8px;
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
   background:
-    linear-gradient(145deg, rgba(15, 118, 110, 0.08), rgba(31, 95, 153, 0.08)),
+    linear-gradient(145deg, rgba(15, 118, 110, 0.1), rgba(31, 95, 153, 0.1)),
     #fff;
   border: 1px solid #c7d8e0;
-  box-shadow: 0 8px 18px rgba(22, 33, 42, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 20px rgba(22, 33, 42, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .brand-mark img {
   display: block;
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
 }
 
 .topbar h1 {
   margin: 0;
-  font-size: 21px;
+  font-size: 20px;
   line-height: 1.2;
   color: #0f2730;
 }
@@ -197,11 +196,11 @@ textarea {
   grid-template-columns: minmax(150px, 190px) auto minmax(140px, 180px) auto auto;
   align-items: center;
   gap: 6px;
-  padding: 6px;
+  padding: 8px;
   border: 1px solid #cfdde4;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 1px 0 rgba(22, 33, 42, 0.02);
 }
 
 .profile-name-field {
@@ -240,7 +239,7 @@ textarea {
   gap: 6px;
   padding: 4px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: rgba(247, 250, 251, 0.84);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
 }
@@ -274,6 +273,11 @@ textarea {
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
 }
 
 .toolbar button,
@@ -306,9 +310,11 @@ textarea {
 }
 
 #modeToggleBtn {
-  background: #fff8eb;
+  min-width: 128px;
+  background: linear-gradient(180deg, #fff7ec, #ffe9bf);
   border-color: #e7c98a;
   color: #8a4a08;
+  box-shadow: 0 1px 0 rgba(22, 33, 42, 0.04), 0 8px 18px rgba(196, 90, 27, 0.08);
 }
 
 #modeToggleBtn:hover {
@@ -332,10 +338,10 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 10px 18px;
+  padding: 11px 18px;
   border-bottom: 1px solid var(--line);
   background:
-    linear-gradient(90deg, rgba(15, 118, 110, 0.1), rgba(31, 95, 153, 0.045) 52%, rgba(196, 90, 27, 0.055)),
+    linear-gradient(90deg, rgba(15, 118, 110, 0.08), rgba(31, 95, 153, 0.04) 52%, rgba(196, 90, 27, 0.05)),
     rgba(248, 251, 252, 0.94);
 }
 
@@ -409,8 +415,8 @@ textarea {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(220px, 260px) minmax(430px, 1fr) minmax(360px, 44vw);
-  gap: 14px;
-  padding: 14px;
+  gap: 12px;
+  padding: 12px;
 }
 
 .app-shell.mode-general .atm-router-block {
@@ -449,8 +455,8 @@ textarea {
   min-height: 0;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(22, 33, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .device-panel,
@@ -469,6 +475,7 @@ textarea {
   background:
     linear-gradient(180deg, #ffffff, #f8fbfc);
   font-weight: 700;
+  font-size: 13px;
 }
 
 .panel-title span {
@@ -494,7 +501,7 @@ textarea {
 .device-list {
   min-height: 0;
   overflow: auto;
-  padding: 8px;
+  padding: 10px;
 }
 
 .device-item {
@@ -502,10 +509,10 @@ textarea {
   display: grid;
   grid-template-columns: 1fr;
   gap: 6px;
-  padding: 11px;
+  padding: 10px 11px;
   margin-bottom: 6px;
   text-align: left;
-  border-radius: 8px;
+  border-radius: 9px;
   background:
     linear-gradient(180deg, #fff, #fbfdfe);
   border-color: #dce5e9;
@@ -541,7 +548,9 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .layer-chip,
@@ -654,17 +663,17 @@ textarea {
   display: flex;
   gap: 0;
   border-bottom: 1px solid var(--line);
-  padding: 4px;
-  gap: 4px;
+  padding: 6px;
+  gap: 6px;
   background: linear-gradient(180deg, #f3f7f9, var(--surface-strong));
 }
 
 .tab {
   flex: 1;
   border: 0;
-  border-radius: 7px;
+  border-radius: 8px;
   background: transparent;
-  min-height: 42px;
+  min-height: 40px;
 }
 
 .tab.active {
@@ -684,12 +693,17 @@ textarea {
   margin: 12px;
   margin-bottom: 0;
   border-left: 4px solid var(--orange);
+  border-color: rgba(196, 90, 27, 0.28);
+  background:
+    linear-gradient(180deg, #fffaf5, #ffffff 36%),
+    #fff;
+  box-shadow: 0 12px 24px rgba(196, 90, 27, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
 .atm-router-block .section-heading small {
   display: block;
   margin-top: 4px;
-  color: var(--muted);
+  color: #8f3f11;
   font-size: 12px;
   font-weight: 600;
 }
@@ -698,9 +712,9 @@ textarea {
   display: inline-flex;
   gap: 4px;
   padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f7fafb;
+  border: 1px solid #e6c8b2;
+  border-radius: 9px;
+  background: linear-gradient(180deg, #fffdf9, #fff5eb);
 }
 
 .segmented-controls button {
@@ -719,7 +733,7 @@ textarea {
 }
 
 .atm-basic-grid {
-  grid-template-columns: minmax(0, 1fr) minmax(150px, 220px) minmax(120px, 160px);
+  grid-template-columns: minmax(0, 1.4fr) minmax(180px, 240px) minmax(120px, 160px);
 }
 
 .atm-rows .row {
@@ -743,7 +757,7 @@ textarea {
   padding: 9px;
   border: 1px solid rgba(196, 90, 27, 0.34);
   border-radius: 8px;
-  background: #fff8f3;
+  background: linear-gradient(180deg, #fff8f3, #fff);
   color: #8f3f11;
   box-shadow: inset 0 0 0 1px rgba(196, 90, 27, 0.08);
 }
@@ -813,12 +827,12 @@ textarea {
 }
 
 .section-block {
-  padding: 12px;
+  padding: 13px;
   margin-bottom: 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: linear-gradient(180deg, #fff, #fbfdfe);
-  box-shadow: 0 1px 0 rgba(22, 33, 42, 0.03), 0 10px 20px rgba(22, 33, 42, 0.045);
+  box-shadow: 0 1px 0 rgba(22, 33, 42, 0.03), 0 8px 18px rgba(22, 33, 42, 0.045);
   scroll-margin: 16px;
 }
 
@@ -854,7 +868,7 @@ textarea {
 }
 
 .section-block h2 {
-  font-size: 16px;
+  font-size: 15px;
   color: #20313b;
 }
 
@@ -896,7 +910,7 @@ textarea {
 .field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 9px;
 }
 
 label {
@@ -923,7 +937,7 @@ label select {
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 8px;
   align-items: end;
-  padding: 10px;
+  padding: 9px;
   border: 1px solid var(--line);
   border-radius: 9px;
   background:
@@ -1025,12 +1039,12 @@ label select {
   justify-content: space-between;
   gap: 10px;
   margin: 0 10px 8px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border: 1px solid #b9dfd6;
-  border-radius: 8px;
+  border-radius: 9px;
   background:
-    linear-gradient(90deg, rgba(15, 118, 110, 0.09), transparent),
-    #f0faf7;
+    linear-gradient(90deg, rgba(15, 118, 110, 0.1), rgba(15, 118, 110, 0.03)),
+    #f2fbf8;
   color: var(--accent-strong);
 }
 
@@ -1050,9 +1064,9 @@ label select {
   display: grid;
   gap: 4px;
   margin: 0 10px 10px;
-  padding: 10px;
+  padding: 11px 12px;
   border: 1px dashed #9fc2dd;
-  border-radius: 8px;
+  border-radius: 9px;
   background:
     linear-gradient(90deg, rgba(31, 95, 153, 0.08), rgba(15, 118, 110, 0.06)),
     #f8fbfc;
@@ -1086,10 +1100,11 @@ label select {
   min-height: 0;
   margin: 0 10px;
   width: calc(100% - 20px);
-  padding: 14px;
+  padding: 15px;
   font-family: var(--mono);
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 12.5px;
+  line-height: 1.55;
+  tab-size: 2;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 64px),
     #0f1820;
@@ -1133,6 +1148,29 @@ label select {
 
 .message-warning {
   color: var(--warning);
+}
+
+.app-shell[data-workspace="atm"] .topbar {
+  box-shadow: 0 1px 0 rgba(22, 33, 42, 0.03), 0 10px 24px rgba(196, 90, 27, 0.08);
+}
+
+.app-shell[data-workspace="atm"] .brand-mark {
+  border-color: rgba(196, 90, 27, 0.28);
+}
+
+.app-shell[data-workspace="atm"] .intro-strip {
+  background:
+    linear-gradient(90deg, rgba(196, 90, 27, 0.1), rgba(15, 118, 110, 0.04) 52%, rgba(31, 95, 153, 0.03)),
+    rgba(248, 251, 252, 0.94);
+}
+
+.app-shell[data-workspace="atm"] .mode-toggle,
+.app-shell[data-workspace="atm"] #modeToggleBtn[aria-pressed="true"] {
+  box-shadow: 0 8px 18px rgba(196, 90, 27, 0.1);
+}
+
+.app-shell[data-workspace="atm"] .atm-router-block .section-heading h2::before {
+  background: var(--orange);
 }
 
 @media (max-width: 1180px) {

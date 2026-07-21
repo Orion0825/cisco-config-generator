@@ -65,7 +65,7 @@ function createWindow() {
     height: 960,
     minWidth: 1120,
     minHeight: 720,
-    title: "Cisco Config Generator",
+    title: "CISCO編輯器",
     backgroundColor: "#0f172a",
     show: false,
     webPreferences: {

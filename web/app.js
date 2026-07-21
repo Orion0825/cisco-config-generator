@@ -795,6 +795,14 @@ function parseAtmTemplate(model) {
     staticRoutes: [],
   };
   let currentInterface = "";
+  const interfaceMeta = new Map();
+
+  const ensureInterfaceMeta = (name) => {
+    if (!interfaceMeta.has(name)) {
+      interfaceMeta.set(name, { name });
+    }
+    return interfaceMeta.get(name);
+  };
 
   lines.forEach((line, index) => {
     let match = line.match(/^hostname\s+(\S+)/i);
@@ -807,17 +815,33 @@ function parseAtmTemplate(model) {
     match = line.match(/^interface\s+(.+)/i);
     if (match) {
       currentInterface = match[1].trim();
+      ensureInterfaceMeta(currentInterface);
+      return;
+    }
+
+    match = line.match(/^\s*description\s+(.+)/i);
+    if (match && currentInterface) {
+      ensureInterfaceMeta(currentInterface).description = match[1].trim();
+      return;
+    }
+
+    match = line.match(/^\s*ip nat (inside|outside)\s*$/i);
+    if (match && currentInterface) {
+      ensureInterfaceMeta(currentInterface).natRole = match[1].toLowerCase();
       return;
     }
 
     match = line.match(/^(\s*)ip address\s+(\S+)\s+(\S+)/i);
     if (match && currentInterface) {
+      const meta = ensureInterfaceMeta(currentInterface);
       parsed.interfaces.push({
         lineIndex: index,
         indent: match[1],
         name: currentInterface,
         address: match[2],
         mask: match[3],
+        description: meta.description || "",
+        natRole: meta.natRole || "",
       });
       return;
     }
@@ -850,6 +874,10 @@ function parseAtmTemplate(model) {
     }
   });
 
+  parsed.interfaces = Array.from(interfaceMeta.values())
+    .map((meta) => parsed.interfaces.find((item) => item.name === meta.name) || meta)
+    .filter((item) => "lineIndex" in item);
+
   return parsed;
 }
 
@@ -861,7 +889,13 @@ function offsetIpv4(value, offset) {
 }
 
 function atmWanInterface(interfaces = []) {
-  return interfaces.find((item) => item.name && !/^vlan/i.test(item.name)) || interfaces[0] || null;
+  return (
+    interfaces.find((item) => item.natRole === "outside") ||
+    interfaces.find((item) => /wan/i.test(item.description || "") || /wan/i.test(item.name || "")) ||
+    interfaces.find((item) => item.name && !/^vlan/i.test(item.name)) ||
+    interfaces[0] ||
+    null
+  );
 }
 
 function atmPrimaryRoute(staticRoutes = []) {
@@ -988,7 +1022,7 @@ function createAtmState(model, saved = {}) {
     nextHop: savedStaticRoutes.get(`${item.destination} ${item.mask}`)?.nextHop || item.nextHop,
   }));
   const adsl = {
-    interfaceName: "N/A",
+    interfaceName: atmWanInterface(interfaces)?.name || "N/A",
     address: saved.adsl?.address || inferAtmAdslAddress({ interfaces, natRules, staticRoutes }),
     mask: ATM_ADSL_MASK,
   };
@@ -1180,11 +1214,11 @@ function renderAtmForm() {
   elements.atmModelLabel.value = parsed.label;
   elements.atmPassbookEnabled.checked = !!atmState.hasPassbook;
   atmState.adsl ||= {
-    interfaceName: "N/A",
+    interfaceName: atmWanInterface(atmState.interfaces || [])?.name || "N/A",
     address: inferAtmAdslAddress(atmState),
     mask: ATM_ADSL_MASK,
   };
-  atmState.adsl.interfaceName = "N/A";
+  atmState.adsl.interfaceName = atmWanInterface(atmState.interfaces || [])?.name || "N/A";
   atmState.adsl.mask = ATM_ADSL_MASK;
   syncAtmPassbookNatRule();
   elements.atmAdslRows.innerHTML = "";
@@ -1233,9 +1267,9 @@ function updateAtmFromEvent(event) {
   const key = target.dataset.key;
   let statusMessage = "";
   if (row.dataset.kind === "atmAdsl") {
-    atmState.adsl ||= { interfaceName: "N/A", address: "", mask: ATM_ADSL_MASK };
+    atmState.adsl ||= { interfaceName: atmWanInterface(atmState.interfaces || [])?.name || "N/A", address: "", mask: ATM_ADSL_MASK };
     atmState.adsl[key] = target.value.trim();
-    atmState.adsl.interfaceName = "N/A";
+    atmState.adsl.interfaceName = atmWanInterface(atmState.interfaces || [])?.name || "N/A";
     atmState.adsl.mask = ATM_ADSL_MASK;
     if (syncAtmFromAdslAddress()) {
       syncAtmDerivedInputs();

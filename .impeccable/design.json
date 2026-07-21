@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-21T01:51:05Z",
+  "title": "Design System: Cisco Config Generator",
+  "extensions": {
+    "sourceFiles": [
+      "web/styles.css",
+      "web/index.html",
+      "web/app.js"
+    ],
+    "colorMeta": {
+      "bg": {
+        "role": "neutral",
+        "displayName": "Cool Canvas",
+        "canonical": "#f5f7f9",
+        "tonalRamp": ["#fbfcfd", "#f5f7f9", "#e6edf1"]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface White",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#ffffff", "#f8fbfc", "#eef3f6"]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Teal Action",
+        "canonical": "#0f766e",
+        "tonalRamp": ["#d8f0ec", "#0f766e", "#0b5f59"]
+      },
+      "blue": {
+        "role": "secondary",
+        "displayName": "Network Blue",
+        "canonical": "#1f5f99",
+        "tonalRamp": ["#dbeaf6", "#1f5f99", "#163f66"]
+      },
+      "orange": {
+        "role": "tertiary",
+        "displayName": "ATM Orange",
+        "canonical": "#c45a1b",
+        "tonalRamp": ["#fde8d8", "#c45a1b", "#8f3f11"]
+      },
+      "violet": {
+        "role": "tertiary",
+        "displayName": "Policy Violet",
+        "canonical": "#6d4aff",
+        "tonalRamp": ["#e8e1ff", "#6d4aff", "#4a2db0"]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Inter Display",
+        "purpose": "Top-level title and status only."
+      },
+      "body": {
+        "displayName": "Inter",
+        "purpose": "All primary prose, labels, and control text."
+      },
+      "mono": {
+        "displayName": "UI Monospace",
+        "purpose": "IP addresses, hostnames, and config-like values."
+      }
+    },
+    "elevationMeta": {
+      "ambientCard": {
+        "value": "0 14px 34px rgba(22, 33, 42, 0.09)",
+        "purpose": "Primary panels and larger containers."
+      },
+      "tightCard": {
+        "value": "0 7px 18px rgba(22, 33, 42, 0.08)",
+        "purpose": "Compact surfaced controls and active device rows."
+      },
+      "headerLift": {
+        "value": "0 1px 0 rgba(22, 33, 42, 0.03), 0 10px 28px rgba(22, 33, 42, 0.06)",
+        "purpose": "Sticky topbar separation."
+      }
+    },
+    "motionMeta": {
+      "microTransition": "140ms ease",
+      "attentionFlash": "900ms ease",
+      "reducedMotion": "Keep transitions instant or near-instant when motion is reduced."
+    },
+    "breakpoints": {
+      "tablet": "1180px",
+      "mobile": "760px"
+    },
+    "componentMeta": {
+      "button": {
+        "shape": "6px radius, 34px minimum height",
+        "behavior": "teal primary action with neutral supporting buttons and clear focus states"
+      },
+      "panel": {
+        "shape": "8-10px radius, 1px line border, shallow shadow",
+        "behavior": "white surfaces on a cool neutral canvas"
+      },
+      "input": {
+        "shape": "6px radius, compact height, white fill",
+        "behavior": "clear focus outline and strong label hierarchy"
+      },
+      "atmSurface": {
+        "shape": "orange-accented specialized editing block",
+        "behavior": "mono-heavy values, fixed vs editable distinction, compact control grouping"
+      }
+    },
+    "rules": {
+      "northStar": "The Operator's Workbench",
+      "overview": "Dense, practical, familiar, and fast to scan.",
+      "do": [
+        "Keep the interface dense but readable.",
+        "Keep teal for the primary path.",
+        "Keep machine-like values visually distinct.",
+        "Use familiar controls and terse feedback."
+      ],
+      "dont": [
+        "Make it look like a marketing website.",
+        "Make it feel like a beginner tutorial.",
+        "Make it look like a flashy dashboard.",
+        "Turn shadows, blur, or gradients into decoration."
+      ]
+    }
+  }
+}

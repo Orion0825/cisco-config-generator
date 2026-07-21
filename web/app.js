@@ -223,6 +223,12 @@ let activeProfileName = "";
 let atmState = createAtmState(ATM_MODELS[0] || "881");
 let workspaceMode = "general";
 let pendingConfigUploadMode = "general";
+let pendingModeChooserResolve = null;
+let pendingModeChooserAction = "";
+let pendingModeChooserCloseTimer = 0;
+let lastModeChooserCloseAt = 0;
+
+const MODE_CHOOSER_REOPEN_GUARD_MS = 240;
 
 const elements = {
   appShell: document.querySelector(".app-shell"),
@@ -244,6 +250,9 @@ const elements = {
   modeToggleBtn: document.querySelector("#modeToggleBtn"),
   exportBtn: document.querySelector("#exportBtn"),
   addDeviceBtn: document.querySelector("#addDeviceBtn"),
+  focusDeviceBtn: document.querySelector("#focusDeviceBtn"),
+  focusOutputBtn: document.querySelector("#focusOutputBtn"),
+  copyCurrentBtn: document.querySelector("#copyCurrentBtn"),
   duplicateDeviceBtn: document.querySelector("#duplicateDeviceBtn"),
   deleteDeviceBtn: document.querySelector("#deleteDeviceBtn"),
   deviceCount: document.querySelector("#deviceCount"),
@@ -335,6 +344,13 @@ const elements = {
   downloadConfigBtn: document.querySelector("#downloadConfigBtn"),
   clearUploadedBtn: document.querySelector("#clearUploadedBtn"),
   messages: document.querySelector("#messages"),
+  modeChooser: document.querySelector("#modeChooser"),
+  modeChooserCard: document.querySelector("#modeChooserCard"),
+  modeChooserTitle: document.querySelector("#modeChooserTitle"),
+  modeChooserText: document.querySelector("#modeChooserText"),
+  modeChooserGeneralBtn: document.querySelector("#modeChooserGeneralBtn"),
+  modeChooserAtmBtn: document.querySelector("#modeChooserAtmBtn"),
+  modeChooserCloseBtn: document.querySelector("#modeChooserCloseBtn"),
 };
 
 function currentDevice() {
@@ -1276,20 +1292,74 @@ function switchAtmModel(model) {
   elements.statusText.textContent = `ATM路由已切換到 ${model} 範本`;
 }
 
-function askWorkspaceMode(actionText) {
-  const isAtm = window.confirm(`${actionText} 是否為 ATM 路由？\n\n確定：ATM路由\n取消：一般設備`);
-  setWorkspaceMode(isAtm ? "atm" : "general");
-  return workspaceMode;
-}
-
-function beginConfigUpload() {
-  pendingConfigUploadMode = askWorkspaceMode("上傳設定檔");
+function closeWorkspaceModeChooser(selectedMode = "") {
+  if (pendingModeChooserCloseTimer) {
+    window.clearTimeout(pendingModeChooserCloseTimer);
+    pendingModeChooserCloseTimer = 0;
+  }
+  lastModeChooserCloseAt = performance.now();
+  elements.modeChooser.classList.add("hidden");
+  elements.modeChooser.setAttribute("aria-hidden", "true");
+  elements.appShell.classList.remove("chooser-open");
+  const resolve = pendingModeChooserResolve;
+  const action = pendingModeChooserAction;
+  pendingModeChooserResolve = null;
+  pendingModeChooserAction = "";
+  if (selectedMode) setWorkspaceMode(selectedMode);
   render();
-  elements.configFileInput.click();
+  if (selectedMode && action === "upload") {
+    pendingConfigUploadMode = selectedMode;
+    elements.configFileInput.click();
+  }
+  if (resolve) resolve(selectedMode);
 }
 
-function createFromModeSelection() {
-  const mode = askWorkspaceMode("新增設定");
+function scheduleWorkspaceModeClose(selectedMode = "") {
+  if (pendingModeChooserCloseTimer) window.clearTimeout(pendingModeChooserCloseTimer);
+  pendingModeChooserCloseTimer = window.setTimeout(() => {
+    pendingModeChooserCloseTimer = 0;
+    closeWorkspaceModeChooser(selectedMode);
+  }, 0);
+}
+
+function modeChooserRecentlyClosed() {
+  return performance.now() - lastModeChooserCloseAt < MODE_CHOOSER_REOPEN_GUARD_MS;
+}
+
+function askWorkspaceMode(actionText, actionType = "") {
+  if (pendingModeChooserResolve) closeWorkspaceModeChooser("");
+  pendingModeChooserAction = actionType;
+  elements.modeChooserTitle.textContent = actionText;
+  elements.modeChooserText.textContent = `${actionText}前，請先選擇要進入一般設備流程或 ATM 路由流程。`;
+  elements.modeChooser.classList.remove("hidden");
+  elements.modeChooser.setAttribute("aria-hidden", "false");
+  elements.appShell.classList.add("chooser-open");
+  return new Promise((resolve) => {
+    pendingModeChooserResolve = resolve;
+    window.setTimeout(() => {
+      if (workspaceMode === "atm") elements.modeChooserAtmBtn.focus();
+      else elements.modeChooserGeneralBtn.focus();
+    }, 0);
+  });
+}
+
+async function beginConfigUpload() {
+  if (modeChooserRecentlyClosed()) return;
+  const mode = await askWorkspaceMode("上傳設定檔", "upload");
+  if (!mode) {
+    elements.statusText.textContent = "已取消上傳";
+    return;
+  }
+  pendingConfigUploadMode = mode;
+}
+
+async function createFromModeSelection() {
+  if (modeChooserRecentlyClosed()) return;
+  const mode = await askWorkspaceMode("新增設定", "create");
+  if (!mode) {
+    elements.statusText.textContent = "已取消新增";
+    return;
+  }
   if (mode === "atm") {
     atmState = createAtmState(atmState.model || ATM_MODELS[0] || "881");
     selectedOutputFile = atmOutputFilename();
@@ -3738,12 +3808,59 @@ elements.configDropZone.addEventListener("dragleave", () => {
 elements.configDropZone.addEventListener("drop", async (event) => {
   event.preventDefault();
   elements.configDropZone.classList.remove("drag-active");
-  const mode = askWorkspaceMode("拖放設定檔");
-  if (mode === "atm") await handleAtmConfigFiles(event.dataTransfer?.files);
-  else await handleConfigFiles(event.dataTransfer?.files);
+  const files = event.dataTransfer?.files;
+  const mode = await askWorkspaceMode("拖放設定檔", "drop");
+  if (!mode) {
+    elements.statusText.textContent = "已取消拖放上傳";
+    return;
+  }
+  if (mode === "atm") await handleAtmConfigFiles(files);
+  else await handleConfigFiles(files);
 });
 
 elements.modeToggleBtn.addEventListener("click", toggleWorkspaceMode);
+elements.focusDeviceBtn.addEventListener("click", focusDeviceEditor);
+elements.focusOutputBtn.addEventListener("click", focusOutputPanel);
+elements.copyCurrentBtn.addEventListener("click", async () => {
+  await copyCurrentConfig();
+});
+
+function handleModeChooserAction(event, selectedMode = "") {
+  event.preventDefault();
+  event.stopPropagation();
+  scheduleWorkspaceModeClose(selectedMode);
+}
+
+function bindModeChooserAction(element, selectedMode = "") {
+  ["click", "pointerup", "touchend"].forEach((eventName) => {
+    element.addEventListener(eventName, (event) => handleModeChooserAction(event, selectedMode));
+  });
+  element.addEventListener("keydown", (event) => {
+    if (!["Enter", " "].includes(event.key)) return;
+    handleModeChooserAction(event, selectedMode);
+  });
+}
+
+["pointerdown", "mousedown", "mouseup", "pointerup", "touchstart", "touchend", "click"].forEach((eventName) => {
+  elements.modeChooserCard.addEventListener(eventName, (event) => {
+    event.stopPropagation();
+  });
+});
+
+bindModeChooserAction(elements.modeChooserGeneralBtn, "general");
+bindModeChooserAction(elements.modeChooserAtmBtn, "atm");
+bindModeChooserAction(elements.modeChooserCloseBtn, "");
+["click", "pointerup", "touchend"].forEach((eventName) => {
+  elements.modeChooser.addEventListener(eventName, (event) => {
+    if (event.target === elements.modeChooser) handleModeChooserAction(event, "");
+  });
+});
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && pendingModeChooserResolve) {
+    event.preventDefault();
+    closeWorkspaceModeChooser("");
+  }
+});
 
 elements.exportBtn.addEventListener("click", () => {
   const exported = cleanForExport(state) || { devices: [] };

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cisco Config Generator</title>
-    <link rel="stylesheet" href="styles.css?v=20260721-ui1">
+    <link rel="stylesheet" href="styles.css?v=20260721-ui4">
   </head>
   <body>
     <div class="app-shell mode-general">
@@ -57,6 +57,12 @@
           <span>網頁版</span>
           <span>桌面版</span>
         </div>
+      </section>
+
+      <section class="workflow-strip" aria-label="工作流程">
+        <button id="focusDeviceBtn" type="button">編輯設備</button>
+        <button id="focusOutputBtn" type="button">檢查輸出</button>
+        <button id="copyCurrentBtn" type="button">複製貼上</button>
       </section>
 
       <main class="workspace">
@@ -463,22 +469,36 @@
             <span>複製貼上區</span>
             <small>直接複製到 CLI 或編輯器</small>
           </div>
-          <div id="configDropZone" class="upload-drop-zone" role="button" tabindex="0">
-            <strong>上傳或拖放 CFG/TXT</strong>
-            <small>支援 .cfg / .txt，會同步左側設備與右側輸出</small>
-          </div>
           <textarea id="configOutput" spellcheck="false" readonly aria-label="Cisco 設定檔輸出"></textarea>
           <div class="output-actions">
             <button id="copyConfigBtn" type="button">複製到剪貼簿</button>
             <button id="downloadConfigBtn" type="button">下載 CFG</button>
             <button id="clearUploadedBtn" type="button">清除上傳</button>
           </div>
+          <div id="configDropZone" class="upload-drop-zone" role="button" tabindex="0">
+            <strong>上傳或拖放 CFG/TXT</strong>
+            <small>支援 .cfg / .txt，會同步左側設備與右側輸出</small>
+          </div>
           <div id="messages" class="messages" aria-live="polite"></div>
         </aside>
       </main>
     </div>
 
-    <script src="atm-templates.js?v=20260708-passbook-nat"></script>
-    <script src="app.js?v=20260708-passbook-nat"></script>
+    <div id="modeChooser" class="mode-chooser hidden" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="modeChooserTitle" aria-describedby="modeChooserText">
+      <div id="modeChooserCard" class="mode-chooser-card">
+        <div class="mode-chooser-head">
+          <strong id="modeChooserTitle">選擇模式</strong>
+          <button id="modeChooserCloseBtn" type="button" aria-label="關閉">×</button>
+        </div>
+        <p id="modeChooserText">請先選擇要進入的一般設備或 ATM 路由流程。</p>
+        <div class="mode-chooser-actions">
+          <button id="modeChooserGeneralBtn" type="button">一般設備</button>
+          <button id="modeChooserAtmBtn" type="button">ATM 路由</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="atm-templates.js?v=20260721-ui4"></script>
+    <script src="app.js?v=20260721-ui4"></script>
   </body>
 </html>

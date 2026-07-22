@@ -233,6 +233,7 @@ const MODE_CHOOSER_REOPEN_GUARD_MS = 240;
 const elements = {
   appShell: document.querySelector(".app-shell"),
   statusText: document.querySelector("#statusText"),
+  workspaceModeBadge: document.querySelector("#workspaceModeBadge"),
   profileNameInput: document.querySelector("#profileNameInput"),
   profileLoginBtn: document.querySelector("#profileLoginBtn"),
   profileSelect: document.querySelector("#profileSelect"),
@@ -446,6 +447,9 @@ function renderWorkspaceMode() {
   elements.appShell.classList.toggle("mode-atm", isAtmMode);
   elements.appShell.classList.toggle("mode-general", !isAtmMode);
   elements.appShell.dataset.workspace = workspaceMode;
+  elements.workspaceModeBadge.textContent = isAtmMode ? "ATM 路由" : "一般設備";
+  elements.workspaceModeBadge.classList.toggle("atm", isAtmMode);
+  elements.workspaceModeBadge.classList.toggle("general", !isAtmMode);
   elements.modeToggleBtn.textContent = isAtmMode ? "切回一般模式" : "切到 ATM 模式";
   elements.modeToggleBtn.setAttribute("aria-pressed", String(isAtmMode));
   elements.modeToggleBtn.title = isAtmMode ? "顯示一般 L2/L3 設備產生器" : "只顯示 ATM 路由設定區";

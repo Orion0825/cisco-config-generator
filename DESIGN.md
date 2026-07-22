@@ -153,12 +153,12 @@ The palette is a cool technical neutral base with a small set of purposeful acce
 
 ## 4. Elevation
 
-Depth is mostly tonal and structural rather than dramatic. White surfaces sit on a cool neutral canvas, with thin borders, inset highlights, and shallow shadows used to separate layers without making the UI feel glossy.
+Depth is mostly tonal and structural rather than dramatic. White surfaces sit on a cool neutral canvas, with thin borders and shallow shadows used to separate layers without making the UI feel glossy.
 
 ### Shadow Vocabulary
-- **Ambient Card** (`0 14px 34px rgba(22, 33, 42, 0.09)`): primary panels and editor regions.
-- **Tight Card** (`0 7px 18px rgba(22, 33, 42, 0.08)`): smaller surfaced controls and active devices.
-- **Header Lift** (`0 1px 0 rgba(22, 33, 42, 0.03), 0 10px 28px rgba(22, 33, 42, 0.06)`): sticky topbar separation.
+- **Ambient Card** (`0 2px 8px rgba(22, 33, 42, 0.07)`): primary panels and editor regions.
+- **Tight Card** (`0 2px 6px rgba(22, 33, 42, 0.07)`): smaller surfaced controls and active devices.
+- **Header Lift** (`0 2px 8px rgba(22, 33, 42, 0.06)`): sticky topbar separation.
 
 ### Named Rules
 **The Flat-at-Rest Rule.** Surfaces should feel stable when idle. Depth should support separation and state, not become decoration.
@@ -179,8 +179,8 @@ Buttons, panels, and inputs are all built from the same compact control vocabula
 
 ### Cards / Containers
 - **Corner Style:** 8-10px radius.
-- **Background:** white on cool neutral, sometimes with a subtle gradient tint.
-- **Shadow Strategy:** light ambient shadow plus inset highlight.
+- **Background:** white on cool neutral, with solid semantic tints for selected or specialized states.
+- **Shadow Strategy:** light ambient shadow only; state should be carried by border, fill, and focus treatment.
 - **Border:** 1px line gray divider, never heavy framing.
 - **Internal Padding:** typically 12px, with tighter 8px-10px clusters inside dense regions.
 

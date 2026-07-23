@@ -1,0 +1,12 @@
+name = "cisco-editor-owner-analytics"
+main = "worker.js"
+compatibility_date = "2026-07-23"
+
+[vars]
+OWNER_KEY = "replace-this-owner-key"
+ALLOWED_ORIGINS = "https://orion0825.github.io,http://127.0.0.1:4173,http://localhost:4173"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "cisco-editor-analytics"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"

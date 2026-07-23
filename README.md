@@ -26,6 +26,7 @@ https://github.com/Orion0825/cisco-config-generator/releases/latest
 - 上傳 `.cfg` / `.txt` 後同步到設定區
 - 用戶本機暫存，不需要雲端帳號
 - ATM 路由模式，支援 881、921、8130
+- 站長私有今日瀏覽統計（需部署 Cloudflare Worker + D1）
 
 ## ATM 路由
 
@@ -38,8 +39,23 @@ ATM 模式只保留需要修改的欄位：
 
 其他設定會依照內建範本保留。
 
+## 站長今日瀏覽統計
+
+網站端已內建站長私有統計入口：
+
+- 快捷鍵：`Ctrl/Cmd + Shift + O`
+- 若快捷鍵被瀏覽器攔截，可用網址參數：`?ownerStats=1`
+- 可在頁面內讀取今日 `UV` / `PV`
+- 站長金鑰只暫存在你自己的瀏覽器
+- 公開訪客不會看到統計數字
+
+因為 GitHub Pages 是靜態站，真實統計仍需要一個外部端點。
+部署方式與範例程式在 [docs/owner-analytics.md](/Users/k/Documents/Codex/2026-07-07/ji3/docs/owner-analytics.md)。
+
 ## 安全提醒
 
 此工具不會上傳資料到雲端，用戶暫存只存在瀏覽器或桌面 App 本機資料內。
+
+若啟用站長統計，公開頁面只會送出匿名瀏覽事件；今日統計的讀取需要站長金鑰，且金鑰只保存在你自己的瀏覽器中。
 
 未做 Apple / Microsoft code signing 時，macOS Gatekeeper、Windows SmartScreen 或防毒軟體可能出現提醒。建議從 GitHub Releases 下載並核對 `SHA256SUMS.txt`。

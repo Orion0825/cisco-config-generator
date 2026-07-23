@@ -201,6 +201,13 @@ const PROFILE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$/;
 const PROFILE_INDEX_KEY = "ciscoConfigGenerator.profiles.v1";
 const PROFILE_CURRENT_KEY = "ciscoConfigGenerator.currentProfile.v1";
 const PROFILE_DATA_PREFIX = "ciscoConfigGenerator.profile.v1.";
+const OWNER_ANALYTICS_STORAGE_KEY = "ciscoConfigGenerator.ownerAnalytics.v1";
+const VISITOR_ID_STORAGE_KEY = "ciscoConfigGenerator.visitorId.v1";
+const SITE_CONFIG = window.CISCO_EDITOR_CONFIG || {};
+const ANALYTICS_SITE_ID = String(SITE_CONFIG.analyticsSiteId || "cisco-config-generator").replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 48) || "cisco-config-generator";
+const ANALYTICS_BASE_URL = normalizeAnalyticsBaseUrl(SITE_CONFIG.analyticsBaseUrl || "");
+const OWNER_ANALYTICS_SHORTCUT = SITE_CONFIG.ownerAnalyticsShortcut || "Ctrl/Cmd + Shift + O";
+const OWNER_ANALYTICS_QUERY_OPEN = new URLSearchParams(window.location.search).get("ownerStats") === "1";
 const ATM_ROUTE_TEMPLATES = window.ATM_ROUTE_TEMPLATES || {};
 const ATM_MODELS = Object.keys(ATM_ROUTE_TEMPLATES);
 const ATM_ADSL_MASK = "255.255.255.240";
@@ -222,11 +229,13 @@ let uploadWarnings = [];
 let activeProfileName = "";
 let atmState = createAtmState(ATM_MODELS[0] || "881");
 let workspaceMode = "general";
+let ownerAnalytics = createOwnerAnalyticsState();
 let pendingConfigUploadMode = "general";
 let pendingModeChooserResolve = null;
 let pendingModeChooserAction = "";
 let pendingModeChooserCloseTimer = 0;
 let lastModeChooserCloseAt = 0;
+let hasTrackedVisitor = false;
 
 const MODE_CHOOSER_REOPEN_GUARD_MS = 240;
 
@@ -244,6 +253,10 @@ const elements = {
   statL2: document.querySelector("#statL2"),
   statL3: document.querySelector("#statL3"),
   statRouting: document.querySelector("#statRouting"),
+  ownerAnalyticsChip: document.querySelector("#ownerAnalyticsChip"),
+  ownerAnalyticsChipUsers: document.querySelector("#ownerAnalyticsChipUsers"),
+  ownerAnalyticsChipViews: document.querySelector("#ownerAnalyticsChipViews"),
+  ownerAnalyticsChipState: document.querySelector("#ownerAnalyticsChipState"),
   fileInput: document.querySelector("#fileInput"),
   configFileInput: document.querySelector("#configFileInput"),
   importBtn: document.querySelector("#importBtn"),
@@ -352,7 +365,37 @@ const elements = {
   modeChooserGeneralBtn: document.querySelector("#modeChooserGeneralBtn"),
   modeChooserAtmBtn: document.querySelector("#modeChooserAtmBtn"),
   modeChooserCloseBtn: document.querySelector("#modeChooserCloseBtn"),
+  ownerAnalyticsModal: document.querySelector("#ownerAnalyticsModal"),
+  ownerAnalyticsCard: document.querySelector("#ownerAnalyticsCard"),
+  ownerAnalyticsCloseBtn: document.querySelector("#ownerAnalyticsCloseBtn"),
+  ownerAnalyticsEndpointInput: document.querySelector("#ownerAnalyticsEndpointInput"),
+  ownerAnalyticsKeyInput: document.querySelector("#ownerAnalyticsKeyInput"),
+  ownerAnalyticsTodayUsers: document.querySelector("#ownerAnalyticsTodayUsers"),
+  ownerAnalyticsTodayViews: document.querySelector("#ownerAnalyticsTodayViews"),
+  ownerAnalyticsStatus: document.querySelector("#ownerAnalyticsStatus"),
+  ownerAnalyticsUpdatedAt: document.querySelector("#ownerAnalyticsUpdatedAt"),
+  ownerAnalyticsFetchBtn: document.querySelector("#ownerAnalyticsFetchBtn"),
+  ownerAnalyticsSaveBtn: document.querySelector("#ownerAnalyticsSaveBtn"),
+  ownerAnalyticsClearBtn: document.querySelector("#ownerAnalyticsClearBtn"),
 };
+
+function normalizeAnalyticsBaseUrl(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function createOwnerAnalyticsState(saved = {}) {
+  return {
+    baseUrl: normalizeAnalyticsBaseUrl(saved.baseUrl || ANALYTICS_BASE_URL),
+    ownerKey: String(saved.ownerKey || "").trim(),
+    modalOpen: false,
+    usersToday: null,
+    viewsToday: null,
+    date: "",
+    updatedAt: "",
+    loading: false,
+    error: "",
+  };
+}
 
 function currentDevice() {
   return state.devices[selectedDeviceIndex];
@@ -435,6 +478,7 @@ function render() {
   renderAtmForm();
   renderForms();
   renderOutput();
+  renderOwnerAnalytics();
   saveAndRefreshProfileControls();
 }
 
@@ -1521,6 +1565,226 @@ function renderMessages(errors, warnings) {
     line.textContent = item.message;
     elements.messages.appendChild(line);
   });
+}
+
+function ownerAnalyticsConfigured() {
+  return Boolean(ownerAnalytics.baseUrl && ownerAnalytics.ownerKey.trim());
+}
+
+function loadOwnerAnalyticsConfig() {
+  const saved = storageRead(OWNER_ANALYTICS_STORAGE_KEY, null);
+  ownerAnalytics = createOwnerAnalyticsState(saved || {});
+}
+
+function syncOwnerAnalyticsFormToState() {
+  ownerAnalytics.baseUrl = normalizeAnalyticsBaseUrl(elements.ownerAnalyticsEndpointInput.value || ownerAnalytics.baseUrl || ANALYTICS_BASE_URL);
+  ownerAnalytics.ownerKey = String(elements.ownerAnalyticsKeyInput.value || ownerAnalytics.ownerKey || "").trim();
+}
+
+function saveOwnerAnalyticsConfig(options = {}) {
+  syncOwnerAnalyticsFormToState();
+  if (!ownerAnalytics.baseUrl) {
+    ownerAnalytics.error = "請先填入統計 API Base URL";
+    renderOwnerAnalytics();
+    if (options.announce) elements.statusText.textContent = ownerAnalytics.error;
+    return false;
+  }
+  if (!ownerAnalytics.ownerKey) {
+    ownerAnalytics.error = "請先填入站長金鑰";
+    renderOwnerAnalytics();
+    if (options.announce) elements.statusText.textContent = ownerAnalytics.error;
+    return false;
+  }
+  ownerAnalytics.error = "";
+  const saved = storageWrite(OWNER_ANALYTICS_STORAGE_KEY, {
+    baseUrl: ownerAnalytics.baseUrl,
+    ownerKey: ownerAnalytics.ownerKey,
+  });
+  if (!saved) {
+    ownerAnalytics.error = "站長設定儲存失敗，請確認 localStorage 權限";
+    renderOwnerAnalytics();
+    if (options.announce) elements.statusText.textContent = ownerAnalytics.error;
+    return false;
+  }
+  renderOwnerAnalytics();
+  if (options.announce) elements.statusText.textContent = "站長統計設定已儲存在這台瀏覽器";
+  return true;
+}
+
+function clearOwnerAnalyticsConfig() {
+  storageRemove(OWNER_ANALYTICS_STORAGE_KEY);
+  ownerAnalytics = createOwnerAnalyticsState({ baseUrl: ANALYTICS_BASE_URL });
+  ownerAnalytics.modalOpen = true;
+  renderOwnerAnalytics();
+  elements.statusText.textContent = "已清除站長金鑰與本機統計設定";
+}
+
+function ownerAnalyticsStatusLine() {
+  if (ownerAnalytics.error) return ownerAnalytics.error;
+  if (!ownerAnalytics.baseUrl) return "請先部署統計端點，然後填入 API Base URL";
+  if (!ownerAnalytics.ownerKey) return "輸入站長金鑰後，只有這台瀏覽器能讀取今日統計";
+  if (ownerAnalytics.loading) return "正在讀取今日統計...";
+  return `快捷鍵：${OWNER_ANALYTICS_SHORTCUT}`;
+}
+
+function renderOwnerAnalytics() {
+  const visibleChip = ownerAnalyticsConfigured();
+  elements.ownerAnalyticsChip.classList.toggle("hidden", !visibleChip);
+  elements.ownerAnalyticsChip.classList.toggle("error", visibleChip && !!ownerAnalytics.error);
+  elements.ownerAnalyticsChipUsers.textContent = ownerAnalytics.usersToday == null ? "--" : String(ownerAnalytics.usersToday);
+  elements.ownerAnalyticsChipViews.textContent = ownerAnalytics.viewsToday == null ? "--" : String(ownerAnalytics.viewsToday);
+  elements.ownerAnalyticsChipState.textContent = ownerAnalytics.loading
+    ? "讀取中"
+    : ownerAnalytics.error
+      ? "需重試"
+      : ownerAnalytics.updatedAt
+        ? formatProfileTime(ownerAnalytics.updatedAt)
+        : "私有";
+
+  elements.ownerAnalyticsModal.classList.toggle("hidden", !ownerAnalytics.modalOpen);
+  elements.ownerAnalyticsModal.setAttribute("aria-hidden", String(!ownerAnalytics.modalOpen));
+
+  if (document.activeElement !== elements.ownerAnalyticsEndpointInput) {
+    elements.ownerAnalyticsEndpointInput.value = ownerAnalytics.baseUrl || "";
+  }
+  if (document.activeElement !== elements.ownerAnalyticsKeyInput) {
+    elements.ownerAnalyticsKeyInput.value = ownerAnalytics.ownerKey || "";
+  }
+
+  elements.ownerAnalyticsTodayUsers.textContent = ownerAnalytics.usersToday == null ? "--" : String(ownerAnalytics.usersToday);
+  elements.ownerAnalyticsTodayViews.textContent = ownerAnalytics.viewsToday == null ? "--" : String(ownerAnalytics.viewsToday);
+  elements.ownerAnalyticsStatus.textContent = ownerAnalyticsStatusLine();
+  elements.ownerAnalyticsUpdatedAt.textContent = ownerAnalytics.updatedAt
+    ? `${ownerAnalytics.date || "今日"} · 最後更新 ${formatProfileTime(ownerAnalytics.updatedAt)}`
+    : "尚未讀取今日統計";
+  elements.ownerAnalyticsFetchBtn.disabled = ownerAnalytics.loading;
+  elements.ownerAnalyticsSaveBtn.disabled = ownerAnalytics.loading;
+  elements.ownerAnalyticsClearBtn.disabled = !ownerAnalyticsConfigured() && !ownerAnalytics.baseUrl;
+}
+
+function openOwnerAnalyticsModal() {
+  ownerAnalytics.modalOpen = true;
+  renderOwnerAnalytics();
+  window.setTimeout(() => {
+    if (!ownerAnalytics.baseUrl) elements.ownerAnalyticsEndpointInput.focus();
+    else if (!ownerAnalytics.ownerKey) elements.ownerAnalyticsKeyInput.focus();
+    else elements.ownerAnalyticsFetchBtn.focus();
+  }, 0);
+}
+
+function closeOwnerAnalyticsModal() {
+  ownerAnalytics.modalOpen = false;
+  renderOwnerAnalytics();
+}
+
+function createVisitorId() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return `visitor-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function getOrCreateVisitorId() {
+  const existing = storageRead(VISITOR_ID_STORAGE_KEY, "");
+  if (typeof existing === "string" && existing) return existing;
+  const created = createVisitorId();
+  storageWrite(VISITOR_ID_STORAGE_KEY, created);
+  return created;
+}
+
+function canTrackOwnerAnalytics() {
+  return Boolean(ANALYTICS_BASE_URL && /^https?:\/\//i.test(ANALYTICS_BASE_URL) && location.protocol !== "file:");
+}
+
+function buildAnalyticsTrackPayload() {
+  return {
+    site: ANALYTICS_SITE_ID,
+    visitorId: getOrCreateVisitorId(),
+    path: location.pathname || "/",
+    referrer: document.referrer || "",
+    title: document.title || "CISCO編輯器",
+    language: navigator.language || "",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+  };
+}
+
+async function trackSiteVisit() {
+  if (hasTrackedVisitor || !canTrackOwnerAnalytics()) return;
+  hasTrackedVisitor = true;
+  const url = `${ANALYTICS_BASE_URL}/track`;
+  const payload = JSON.stringify(buildAnalyticsTrackPayload());
+
+  try {
+    if (navigator.sendBeacon) {
+      const blob = new Blob([payload], { type: "application/json" });
+      if (navigator.sendBeacon(url, blob)) return;
+    }
+  } catch {
+    // Fall through to fetch.
+  }
+
+  try {
+    await fetch(url, {
+      method: "POST",
+      mode: "cors",
+      keepalive: true,
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+    });
+  } catch {
+    // Ignore analytics transport errors in the public UI.
+  }
+}
+
+async function fetchOwnerAnalytics(options = {}) {
+  syncOwnerAnalyticsFormToState();
+  if (!ownerAnalytics.baseUrl) {
+    ownerAnalytics.error = "請先填入統計 API Base URL";
+    renderOwnerAnalytics();
+    if (options.announce) elements.statusText.textContent = ownerAnalytics.error;
+    return;
+  }
+  if (!ownerAnalytics.ownerKey) {
+    ownerAnalytics.error = "請先填入站長金鑰";
+    renderOwnerAnalytics();
+    if (options.announce) elements.statusText.textContent = ownerAnalytics.error;
+    return;
+  }
+
+  ownerAnalytics.loading = true;
+  ownerAnalytics.error = "";
+  renderOwnerAnalytics();
+
+  try {
+    const response = await fetch(`${ownerAnalytics.baseUrl}/today?site=${encodeURIComponent(ANALYTICS_SITE_ID)}`, {
+      method: "GET",
+      mode: "cors",
+      headers: {
+        Accept: "application/json",
+        "X-Owner-Key": ownerAnalytics.ownerKey,
+      },
+    });
+    if (!response.ok) {
+      if (response.status === 401) throw new Error("站長金鑰錯誤或未授權");
+      throw new Error(`統計讀取失敗 (${response.status})`);
+    }
+    const data = await response.json();
+    ownerAnalytics.usersToday = Number(data.uniqueVisitors ?? 0);
+    ownerAnalytics.viewsToday = Number(data.pageViews ?? 0);
+    ownerAnalytics.date = String(data.date || new Date().toISOString().slice(0, 10));
+    ownerAnalytics.updatedAt = data.generatedAt || new Date().toISOString();
+    ownerAnalytics.error = "";
+    if (options.announce) {
+      elements.statusText.textContent = `已讀取 ${ownerAnalytics.date} 今日瀏覽 ${ownerAnalytics.usersToday} 人 / ${ownerAnalytics.viewsToday} 次`;
+    }
+  } catch (error) {
+    const rawMessage = error instanceof Error ? error.message : "統計讀取失敗";
+    ownerAnalytics.error = rawMessage === "Failed to fetch"
+      ? "無法連線統計端點，請檢查 Base URL 與 Worker 是否已部署"
+      : rawMessage;
+    if (options.announce) elements.statusText.textContent = ownerAnalytics.error;
+  } finally {
+    ownerAnalytics.loading = false;
+    renderOwnerAnalytics();
+  }
 }
 
 function renderProfileControls() {
@@ -3802,6 +4066,42 @@ elements.profileSelect.addEventListener("change", () => {
 elements.profileSaveBtn.addEventListener("click", () => saveActiveProfile({ announce: true }));
 elements.profileDeleteBtn.addEventListener("click", deleteSelectedProfile);
 
+elements.ownerAnalyticsChip.addEventListener("click", openOwnerAnalyticsModal);
+elements.ownerAnalyticsChip.addEventListener("keydown", (event) => {
+  if (!["Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  openOwnerAnalyticsModal();
+});
+elements.ownerAnalyticsCloseBtn.addEventListener("click", closeOwnerAnalyticsModal);
+elements.ownerAnalyticsFetchBtn.addEventListener("click", async () => {
+  await fetchOwnerAnalytics({ announce: true });
+});
+elements.ownerAnalyticsSaveBtn.addEventListener("click", async () => {
+  if (!saveOwnerAnalyticsConfig({ announce: true })) return;
+  await fetchOwnerAnalytics({ announce: true });
+});
+elements.ownerAnalyticsClearBtn.addEventListener("click", clearOwnerAnalyticsConfig);
+elements.ownerAnalyticsEndpointInput.addEventListener("keydown", async (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  await fetchOwnerAnalytics({ announce: true });
+});
+elements.ownerAnalyticsKeyInput.addEventListener("keydown", async (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  await fetchOwnerAnalytics({ announce: true });
+});
+["pointerdown", "mousedown", "mouseup", "pointerup", "touchstart", "touchend", "click"].forEach((eventName) => {
+  elements.ownerAnalyticsCard.addEventListener(eventName, (event) => {
+    event.stopPropagation();
+  });
+});
+["click", "pointerup", "touchend"].forEach((eventName) => {
+  elements.ownerAnalyticsModal.addEventListener(eventName, (event) => {
+    if (event.target === elements.ownerAnalyticsModal) closeOwnerAnalyticsModal();
+  });
+});
+
 elements.atmModelButtons.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-model]");
   if (!button) return;
@@ -3894,6 +4194,16 @@ bindModeChooserAction(elements.modeChooserCloseBtn, "");
   });
 });
 window.addEventListener("keydown", (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "o") {
+    event.preventDefault();
+    openOwnerAnalyticsModal();
+    return;
+  }
+  if (event.key === "Escape" && ownerAnalytics.modalOpen) {
+    event.preventDefault();
+    closeOwnerAnalyticsModal();
+    return;
+  }
   if (event.key === "Escape" && pendingModeChooserResolve) {
     event.preventDefault();
     closeWorkspaceModeChooser("");
@@ -4238,5 +4548,11 @@ elements.clearUploadedBtn.addEventListener("click", () => {
   elements.statusText.textContent = `已清除 ${count} 份上傳檔案`;
 });
 
+loadOwnerAnalyticsConfig();
+if (OWNER_ANALYTICS_QUERY_OPEN) ownerAnalytics.modalOpen = true;
 restoreLastProfile();
 render();
+trackSiteVisit();
+if (ownerAnalyticsConfigured()) {
+  fetchOwnerAnalytics();
+}

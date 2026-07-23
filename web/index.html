@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>CISCO編輯器</title>
-    <link rel="stylesheet" href="styles.css?v=20260722-ui8">
+    <link rel="stylesheet" href="styles.css?v=20260723-oa1">
   </head>
   <body>
     <div class="app-shell mode-general">
@@ -39,6 +39,18 @@
             <span><strong id="statL3">0</strong><small>L3</small></span>
             <span><strong id="statRouting">0</strong><small>路由</small></span>
           </div>
+          <button id="ownerAnalyticsChip" type="button" class="owner-analytics-chip hidden" aria-label="站長今日瀏覽統計">
+            <span class="owner-analytics-chip-title">今日瀏覽</span>
+            <span class="owner-analytics-chip-metric">
+              <strong id="ownerAnalyticsChipUsers">--</strong>
+              <small>UV</small>
+            </span>
+            <span class="owner-analytics-chip-metric">
+              <strong id="ownerAnalyticsChipViews">--</strong>
+              <small>PV</small>
+            </span>
+            <span id="ownerAnalyticsChipState" class="owner-analytics-chip-state">私有</span>
+          </button>
           <div class="toolbar">
             <input id="fileInput" type="file" accept="application/json,.json" hidden>
             <input id="configFileInput" class="file-input-native" type="file" accept=".cfg,.txt,text/plain" multiple>
@@ -501,7 +513,47 @@
       </div>
     </div>
 
-    <script src="atm-templates.js?v=20260722-ui8"></script>
-    <script src="app.js?v=20260722-ui8"></script>
+    <div id="ownerAnalyticsModal" class="owner-analytics-modal hidden" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="ownerAnalyticsTitle" aria-describedby="ownerAnalyticsText">
+      <div id="ownerAnalyticsCard" class="owner-analytics-card">
+        <div class="mode-chooser-head">
+          <strong id="ownerAnalyticsTitle">站長今日瀏覽統計</strong>
+          <button id="ownerAnalyticsCloseBtn" type="button" aria-label="關閉">×</button>
+        </div>
+        <p id="ownerAnalyticsText">只有輸入站長金鑰的這台瀏覽器能看到今日統計，外部訪客不會看到任何數字。</p>
+        <div class="owner-analytics-grid">
+          <label>
+            統計 API Base URL
+            <input id="ownerAnalyticsEndpointInput" type="url" inputmode="url" autocomplete="off" placeholder="https://your-worker.workers.dev">
+          </label>
+          <label>
+            站長金鑰
+            <input id="ownerAnalyticsKeyInput" type="password" autocomplete="off" placeholder="只暫存在這台瀏覽器">
+          </label>
+        </div>
+        <div class="owner-analytics-summary">
+          <div class="owner-analytics-metric-card">
+            <span>今日 UV</span>
+            <strong id="ownerAnalyticsTodayUsers">--</strong>
+          </div>
+          <div class="owner-analytics-metric-card">
+            <span>今日 PV</span>
+            <strong id="ownerAnalyticsTodayViews">--</strong>
+          </div>
+        </div>
+        <div class="owner-analytics-footer">
+          <small id="ownerAnalyticsStatus">快捷鍵：Ctrl/Cmd + Shift + O</small>
+          <small id="ownerAnalyticsUpdatedAt">尚未讀取今日統計</small>
+        </div>
+        <div class="owner-analytics-actions">
+          <button id="ownerAnalyticsFetchBtn" type="button">讀取今日統計</button>
+          <button id="ownerAnalyticsSaveBtn" type="button">儲存本機設定</button>
+          <button id="ownerAnalyticsClearBtn" type="button" class="danger">清除站長金鑰</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="site-config.js?v=20260723-oa1"></script>
+    <script src="atm-templates.js?v=20260723-oa1"></script>
+    <script src="app.js?v=20260723-oa1"></script>
   </body>
 </html>

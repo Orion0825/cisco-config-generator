@@ -2,6 +2,7 @@ name = "orion0825-cisco-editor-analytics"
 main = "worker.js"
 compatibility_date = "2026-07-23"
 workers_dev = true
+account_id = "f75ac15b46181e74ed79be353c72338c"
 
 [vars]
 ALLOWED_ORIGINS = "https://orion0825.github.io,http://127.0.0.1:4173,http://localhost:4173"
@@ -9,4 +10,4 @@ ALLOWED_ORIGINS = "https://orion0825.github.io,http://127.0.0.1:4173,http://loca
 [[d1_databases]]
 binding = "DB"
 database_name = "orion0825-cisco-editor-analytics"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "4f16d91e-d1f1-4750-8545-f4a5ea6d7f51"

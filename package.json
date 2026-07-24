@@ -10,11 +10,14 @@
     "desktop": "electron .",
     "pack": "electron-builder --dir --publish never",
     "dist:mac": "electron-builder --mac dmg zip --x64 --arm64 --publish never",
-    "dist:win": "electron-builder --win nsis --x64 --publish never"
+    "dist:win": "electron-builder --win nsis --x64 --publish never",
+    "analytics:whoami": "wrangler whoami --config analytics/cloudflare/wrangler.toml",
+    "analytics:deploy": "wrangler deploy --config analytics/cloudflare/wrangler.toml"
   },
   "devDependencies": {
     "electron": "^31.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "wrangler": "^4.113.0"
   },
   "build": {
     "appId": "com.orion.cisco-config-generator",

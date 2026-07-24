@@ -32,7 +32,7 @@
 
 建立一個 D1 database，例如：
 
-- 名稱：`cisco-editor-analytics`
+- 名稱：`orion0825-cisco-editor-analytics`
 
 然後執行 `analytics/cloudflare/schema.sql` 建表。
 
@@ -42,8 +42,9 @@
 
 環境變數需要：
 
-- `OWNER_KEY`
 - `ALLOWED_ORIGINS`
+
+另外把 `OWNER_KEY` 用 Cloudflare secret 儲存，不要直接寫進 repo。
 
 其中 `ALLOWED_ORIGINS` 建議至少包含：
 
@@ -56,10 +57,15 @@
 使用 `analytics/cloudflare/wrangler.example.toml` 當範本，把：
 
 - `database_id`
-- `OWNER_KEY`
 - `ALLOWED_ORIGINS`
 
 換成你自己的值。
+
+然後執行：
+
+```bash
+wrangler secret put OWNER_KEY --config analytics/cloudflare/wrangler.toml
+```
 
 ### 4. 更新網站設定
 
